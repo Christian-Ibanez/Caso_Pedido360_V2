@@ -7,8 +7,8 @@ export const msalConfig = {
   auth: {
     clientId: spaClientId,
     authority: `https://login.microsoftonline.com/${tenantId}`,
-    redirectUri: `${window.location.origin}/redirect.html`,
-    postLogoutRedirectUri: window.location.origin,
+    redirectUri: window.location.origin,
+    postLogoutRedirectUri: `${window.location.origin}/login`,
   },
   cache: {
     cacheLocation: 'sessionStorage',

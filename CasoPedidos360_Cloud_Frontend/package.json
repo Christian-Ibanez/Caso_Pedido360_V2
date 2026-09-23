@@ -12,7 +12,8 @@
     "@azure/msal-browser": "^5.22.0",
     "@azure/msal-react": "^5.7.1",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react-dom": "^19.3.0",
+    "react-router-dom": "^7.18.4"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^6.1.1",

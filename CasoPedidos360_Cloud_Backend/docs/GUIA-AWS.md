@@ -17,16 +17,16 @@ Front React (en el PC)  ──token──▶  API Gateway (valida el JWT)  ─�
 
 ## Lo que necesitas antes de empezar
 
-- Acceso al repo en GitHub (pídele a Vicente que te agregue como colaborador si es privado).
+- Acceso al repo en GitHub.
 - Tu cuenta de AWS (AWS Academy / Learner Lab sirve).
 - Estos datos de Azure, que ya están configurados en el proyecto:
 
 | Dato | Valor |
 |---|---|
-| Tenant ID | `9d7e1df5-4b2b-4f57-944c-0ea679424efd` |
+| Tenant ID | `85ffb3f2-fe8a-4eef-9c3d-f1f4983a31b6` |
 | Client ID de la API (audiencia) | `88e22461-0dce-4446-8509-c6eec7da2c02` |
 | Issuer | `https://login.microsoftonline.com/9d7e1df5-4b2b-4f57-944c-0ea679424efd/v2.0` |
-| Usuario de prueba | `test1@vicho1.onmicrosoft.com` (la clave te la pasa Vicente) |
+| Usuario de prueba | `alumno01@Azulinho.onmicrosoft.com`  |
 
 ---
 
