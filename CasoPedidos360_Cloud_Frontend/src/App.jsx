@@ -3,6 +3,7 @@ import { useMsal } from '@azure/msal-react';
 import { InteractionStatus } from '@azure/msal-browser';
 import LoginComponent from './components/LoginComponent';
 import DashboardComponent from './components/DashboardComponent';
+import OrdersComponent from './components/OrdersComponent';
 import AuthCallbackComponent from './components/AuthCallbackComponent';
 
 function ProtectedRoute({ children }) {
@@ -35,6 +36,14 @@ export default function App() {
           element={
             <ProtectedRoute>
               <DashboardComponent />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/orders" 
+          element={
+            <ProtectedRoute>
+              <OrdersComponent />
             </ProtectedRoute>
           } 
         />
