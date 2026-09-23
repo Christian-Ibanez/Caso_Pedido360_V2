@@ -1,0 +1,40 @@
+services:
+  oracle:
+    image: gvenzl/oracle-free:23-slim-faststart
+    container_name: ms-orders-db
+    environment:
+      ORACLE_PASSWORD: Admin123
+      APP_USER: pedidos360
+      APP_USER_PASSWORD: pedidos360
+    ports:
+      - "1522:1521"
+    volumes:
+      - oradata:/opt/oracle/oradata
+    healthcheck:
+      test: ["CMD", "healthcheck.sh"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    restart: unless-stopped
+
+  orders-app:
+    build: .
+    container_name: ms-orders-app
+    ports:
+      - "8081:8081"
+    environment:
+      SPRING_PROFILES_ACTIVE: oracle
+      TZ: America/Santiago
+      DB_URL: jdbc:oracle:thin:@//oracle:1521/FREEPDB1
+      DB_USERNAME: pedidos360
+      DB_PASSWORD: pedidos360
+      ENTRA_TENANT_ID: ${ENTRA_TENANT_ID:-85ffb3f2-fe8a-4eef-9c3d-f1f4983a31b6}
+      API_CLIENT_ID: ${API_CLIENT_ID:-c11a2330-26f6-4d03-a29b-9f43c9f47078}
+    depends_on:
+      oracle:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  oradata:

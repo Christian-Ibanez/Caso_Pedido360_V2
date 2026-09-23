@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pedidos360-frontend
+    # Mapeamos el puerto 5173 de la máquina host al puerto 80 del contenedor Nginx.
+    # Se usa el 5173 porque en vite.config.js se menciona que es el puerto fijo
+    # registrado para las Redirect URI en Entra ID y CORS.
+    ports:
+      - "5173:80"
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production

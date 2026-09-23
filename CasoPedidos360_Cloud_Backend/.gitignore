@@ -1,0 +1,17 @@
+# Material del docente (no se publica)
+*.pdf
+
+# Secretos / variables de entorno
+.env
+*.env
+
+# Build e IDE
+target/
+.idea/
+.vscode/
+*.iml
+
+# Frontend
+node_modules/
+dist/
+.env.local
