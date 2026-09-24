@@ -3,27 +3,28 @@ export default function OrderStatusBadgeComponent({ status }) {
   let color = '#333';
   
   switch (status) {
-    case 'CREATED':
-    case 'PENDING':
-      backgroundColor = '#fff3cd';
+    case 'CREADO':
+      backgroundColor = '#fff3cd'; // Amarillo tenue
       color = '#856404';
       break;
-    case 'ACCEPTED':
-    case 'IN_PROGRESS':
-      backgroundColor = '#cce5ff';
+    case 'ACEPTADO':
+      backgroundColor = '#cce5ff'; // Azul tenue
       color = '#004085';
       break;
-    case 'SHIPPED':
-    case 'EN_CAMINO':
-      backgroundColor = '#d1ecf1';
+    case 'EN_PREPARACION':
+      backgroundColor = '#ffeeba'; // Naranja tenue
+      color = '#856404';
+      break;
+    case 'DESPACHADO':
+      backgroundColor = '#d1ecf1'; // Cyan tenue
       color = '#0c5460';
       break;
-    case 'DELIVERED':
-      backgroundColor = '#d4edda';
+    case 'ENTREGADO':
+      backgroundColor = '#d4edda'; // Verde tenue
       color = '#155724';
       break;
-    case 'CANCELLED':
-      backgroundColor = '#f8d7da';
+    case 'CANCELADO':
+      backgroundColor = '#f8d7da'; // Rojo tenue
       color = '#721c24';
       break;
     default:

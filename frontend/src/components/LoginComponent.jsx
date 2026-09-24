@@ -20,7 +20,7 @@ export default function LoginComponent() {
       });
     } catch (e) {
       console.error(e);
-      setError(e.message || "Error al iniciar sesin");
+      setError(e.message || "Error al iniciar sesión");
     }
   };
 
@@ -28,10 +28,10 @@ export default function LoginComponent() {
     <div className="page" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
       <div className="section" style={{ textAlign: 'center', padding: '2rem', maxWidth: '400px', width: '100%' }}>
         <h2>Bienvenido a Pedidos360</h2>
-        <p className="sub" style={{ marginBottom: '2rem' }}>Por favor, inicia sesin para continuar.</p>
+        <p className="sub" style={{ marginBottom: '2rem' }}>Por favor, inicia sesión para continuar.</p>
         
         <button className="btn primary" onClick={handleLogin} style={{ width: '100%' }}>
-          Iniciar sesin con Microsoft
+          Iniciar sesión con Microsoft
         </button>
 
         {error && <p className="error" style={{ marginTop: '1rem' }}>{error}</p>}

@@ -9,7 +9,8 @@ export function setTokenProvider(provider) {
 
 const STATUS_MESSAGES = {
   401: 'Tu sesión no es válida o expiró. Cierra sesión y vuelve a entrar.',
-  403: 'El token no tiene permiso para usar la API (falta el scope access_as_user).',
+  403: 'No tienes permisos para realizar esta acción.',
+  500: 'Ocurrió un error en el servidor. Intenta de nuevo más tarde.'
 };
 
 export async function request(path, { method = 'GET', body } = {}) {
@@ -17,7 +18,6 @@ export async function request(path, { method = 'GET', body } = {}) {
   if (body !== undefined) headers['Content-Type'] = 'application/json';
 
   const token = await tokenProvider();
-  console.log('>>> TOKEN OBTENIDO EN HTTP.JS:', token); // <-- Agregar para depurar
   if (token) headers.Authorization = `Bearer ${token}`;
 
   let res;
@@ -32,9 +32,20 @@ export async function request(path, { method = 'GET', body } = {}) {
   }
 
   if (res.status === 204) return null;
+  
   const data = await res.json().catch(() => null);
+  
   if (!res.ok) {
-    throw new Error(data?.detail ?? STATUS_MESSAGES[res.status] ?? `Error ${res.status} llamando a ${path}`);
+    const defaultMsg = STATUS_MESSAGES[res.status] || `Error ${res.status} llamando a ${path}`;
+    throw new Error(data?.detail || data?.message || defaultMsg);
   }
+  
   return data;
 }
+
+export const api = {
+  get: (path) => request(path, { method: 'GET' }),
+  post: (path, body) => request(path, { method: 'POST', body }),
+  put: (path, body) => request(path, { method: 'PUT', body }),
+  delete: (path) => request(path, { method: 'DELETE' })
+};

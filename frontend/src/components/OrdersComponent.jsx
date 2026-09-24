@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useMsal } from '@azure/msal-react';
 import Layout from './Layout';
-import { request } from '../api/http';
+import { api } from '../api/http';
 import OrderListComponent from './OrderListComponent';
 import OrderDetailComponent from './OrderDetailComponent';
 
@@ -23,9 +23,7 @@ export default function OrdersComponent() {
     setLoading(true);
     setError('');
     try {
-      // The API endpoint should match the backend setup
-      // In this case, we request the orders from the BFF
-      const data = await request('/api/orders');
+      const data = await api.get('/api/orders');
       if (Array.isArray(data)) {
         setOrders(data);
       } else {
@@ -33,6 +31,8 @@ export default function OrdersComponent() {
       }
     } catch (err) {
       setError(err.message);
+      // Fallback a array vacío si falla la carga inicial
+      setOrders([]);
     } finally {
       setLoading(false);
     }
@@ -53,7 +53,11 @@ export default function OrdersComponent() {
 
   return (
     <Layout title="Mis Pedidos">
-      {error && <div style={{ color: 'red', marginBottom: '1rem' }}>{error}</div>}
+      {error && (
+        <div style={{ backgroundColor: '#f8d7da', color: '#721c24', padding: '1rem', borderRadius: '4px', marginBottom: '1rem' }}>
+          <strong>Error:</strong> {error}
+        </div>
+      )}
       
       {selectedOrder ? (
         <OrderDetailComponent 

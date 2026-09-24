@@ -12,7 +12,7 @@ export default function AuthCallbackComponent() {
     // Listen to MSAL events for errors
     const callbackId = instance.addEventCallback((message) => {
       if (message.eventType === EventType.LOGIN_FAILURE) {
-        setErrorMsg('Error al iniciar sesin: ' + message.error?.message || 'Error desconocido');
+        setErrorMsg('Error al iniciar sesión: ' + message.error?.message || 'Error desconocido');
       }
     });
 
@@ -43,7 +43,7 @@ export default function AuthCallbackComponent() {
           <button className="btn" onClick={() => navigate('/login', { replace: true })}>Volver al Login</button>
         </div>
       ) : (
-        <p>Procesando autenticacin... por favor espera.</p>
+        <p>Procesando autenticación... por favor espera.</p>
       )}
     </div>
   );

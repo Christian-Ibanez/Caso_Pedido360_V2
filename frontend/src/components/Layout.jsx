@@ -43,7 +43,7 @@ export default function Layout({ children, title }) {
           <h1 style={{ margin: 0, fontSize: '1.5rem' }}>{title || 'Dashboard'}</h1>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
             <span>Bienvenido, <b>{account?.name || account?.username}</b></span>
-            <button className="btn" onClick={handleLogout}>Cerrar Sesin</button>
+            <button className="btn" onClick={handleLogout}>Cerrar Sesión</button>
           </div>
         </header>
 
