@@ -6,36 +6,46 @@ import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
 
-/**
- * El BFF es un Resource Server: no emite tokens, solo valida los que emite Entra ID.
- * Firma, issuer, audiencia y vigencia se validan con application.yml (issuer-uri + audiences).
- * Para usar la API basta un token valido emitido para ella (scope access_as_user); no se usan roles.
- */
 @Configuration
 public class SecurityConfig {
 
-	/** Scope delegado que expone el registro de la API en Entra ID (viene en todo token pedido para la API). */
-	private static final String SCOPE = "SCOPE_access_as_user";
+    private static final String SCOPE = "SCOPE_access_as_user";
 
-	@Bean
-	SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-		http
-			.cors(Customizer.withDefaults())
-			.csrf(csrf -> csrf.disable())
-			.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-			.authorizeHttpRequests(auth -> auth
-				// Preflight CORS del navegador (no lleva token)
-				.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-				// Permitir cualquier usuario con token valido para esta API
-				.requestMatchers(HttpMethod.GET, "/api/data").authenticated()
-				.requestMatchers("/api/orders", "/api/orders/**").authenticated()
-				// Todo lo demas se rechaza
-				.anyRequest().denyAll()
-			)
-			.oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()));
+    @Bean
+    SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        http
+            .cors(Customizer.withDefaults())
+            .csrf(csrf -> csrf.disable())
+            .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .authorizeHttpRequests(auth -> auth
+                // Preflight CORS del navegador
+                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                // Permitir cualquier usuario autenticado
+                .requestMatchers(HttpMethod.GET, "/api/data").authenticated()
+                .requestMatchers("/api/orders", "/api/orders/**").authenticated()
+                // Todo lo demás se rechaza
+                .anyRequest().denyAll()
+            )
+            // CAMBIO: En lugar de Customizer.withDefaults(), usamos nuestro convertidor de roles
+            .oauth2ResourceServer(oauth2 -> oauth2
+                .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))
+            );
 
-		return http.build();
-	}
+        return http.build();
+    }
+
+    // MÉTODO NUEVO: Mapea la propiedad "roles" del JWT a GrantedAuthorities de Spring Security
+    private JwtAuthenticationConverter jwtAuthenticationConverter() {
+        JwtGrantedAuthoritiesConverter authoritiesConverter = new JwtGrantedAuthoritiesConverter();
+        authoritiesConverter.setAuthoritiesClaimName("roles");
+        authoritiesConverter.setAuthorityPrefix("ROLE_");
+
+        JwtAuthenticationConverter jwtConverter = new JwtAuthenticationConverter();
+        jwtConverter.setJwtGrantedAuthoritiesConverter(authoritiesConverter);
+        return jwtConverter;
+    }
 }
