@@ -4,11 +4,15 @@ import Layout from './Layout';
 import { api } from '../api/http';
 import OrderListComponent from './OrderListComponent';
 import OrderDetailComponent from './OrderDetailComponent';
+import { getAccessToken, decodeClaims } from '../auth/token';
 
 export default function OrdersComponent() {
-  const { accounts } = useMsal();
+  const { instance, accounts } = useMsal();
   const account = accounts[0];
-  const roles = account?.idTokenClaims?.roles || [];
+  
+  // Leemos inicialmente del ID Token, pero luego validaremos el Access Token
+  const [roles, setRoles] = useState(account?.idTokenClaims?.roles || []);
+  const [authResolved, setAuthResolved] = useState(false);
   
   const isAdmin = roles.includes('Admin');
   const isOperator = roles.includes('Operator');
@@ -38,9 +42,31 @@ export default function OrdersComponent() {
     }
   };
 
+  // Filtrado dinámico en tiempo de render
+  const visibleOrders = (isCustomer && !isAdmin && !isOperator)
+    ? orders.filter(o => o.customerEmail?.toLowerCase() === (account?.username || account?.idTokenClaims?.preferred_username)?.toLowerCase())
+    : orders;
+
   useEffect(() => {
+    const fetchRolesFromAccessToken = async () => {
+      if (!account) return;
+      try {
+        const token = await getAccessToken(instance, account);
+        if (token) {
+          const claims = decodeClaims(token);
+          if (claims.roles) {
+            setRoles(claims.roles);
+          }
+        }
+      } catch (err) {
+        console.error('Error al decodificar token de acceso:', err);
+      } finally {
+        setAuthResolved(true);
+      }
+    };
+    fetchRolesFromAccessToken();
     fetchOrders();
-  }, []);
+  }, [instance, account]);
 
   const handleSelectOrder = (order) => {
     setSelectedOrder(order);
@@ -52,7 +78,7 @@ export default function OrdersComponent() {
   };
 
   return (
-    <Layout title="Mis Pedidos">
+    <Layout title={(isAdmin || isOperator) ? 'Gestión de Pedidos' : 'Mis Pedidos'}>
       {error && (
         <div style={{ backgroundColor: '#f8d7da', color: '#721c24', padding: '1rem', borderRadius: '4px', marginBottom: '1rem' }}>
           <strong>Error:</strong> {error}
@@ -69,8 +95,8 @@ export default function OrdersComponent() {
         />
       ) : (
         <OrderListComponent 
-          orders={orders}
-          loading={loading}
+          orders={visibleOrders}
+          loading={loading || !authResolved}
           onSelectOrder={handleSelectOrder}
           onRefresh={fetchOrders}
           isAdmin={isAdmin}
