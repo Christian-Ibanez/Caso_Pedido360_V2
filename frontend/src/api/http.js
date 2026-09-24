@@ -17,6 +17,7 @@ export async function request(path, { method = 'GET', body } = {}) {
   if (body !== undefined) headers['Content-Type'] = 'application/json';
 
   const token = await tokenProvider();
+  console.log('>>> TOKEN OBTENIDO EN HTTP.JS:', token); // <-- Agregar para depurar
   if (token) headers.Authorization = `Bearer ${token}`;
 
   let res;

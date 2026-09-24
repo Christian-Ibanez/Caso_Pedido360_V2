@@ -1,24 +1,17 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useMsal } from '@azure/msal-react';
 import { InteractionStatus } from '@azure/msal-browser';
 import { tokenRequest } from './authConfig';
 import { getAccessToken } from './token';
-import { setTokenProvider } from '../api/http';
 
 const message = (e) => (e instanceof Error ? e.message : String(e));
 
-// Estado de la sesion con Entra ID: cuenta, login/logout y access token para las llamadas al backend
+// Estado de la sesión con Entra ID: cuenta, login/logout y access token para las llamadas al backend
 export function useSession() {
   const { instance, accounts, inProgress } = useMsal();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const account = accounts[0];
-
-  useEffect(() => {
-    if (!account) return undefined;
-    setTokenProvider(() => getAccessToken(instance, account));
-    return () => setTokenProvider(async () => null);
-  }, [instance, account]);
 
   async function login() {
     setBusy(true);
