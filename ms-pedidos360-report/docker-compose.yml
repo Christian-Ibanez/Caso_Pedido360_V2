@@ -1,0 +1,15 @@
+# Desarrollo: report con H2 en memoria, consumiendo un Kafka ya levantado (p. ej. infra/kafka/compose.yml en esta maquina).
+# Para EC2 usar infra/apps/compose.yml (perfil oracle)
+services:
+  report-app:
+    build: .
+    container_name: ms-report-app
+    ports:
+      - "8086:8086"
+    environment:
+      SPRING_PROFILES_ACTIVE: local
+      TZ: America/Santiago
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-host.docker.internal:9092}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped

@@ -1,0 +1,23 @@
+server:
+  port: ${SERVER_PORT:8083}
+
+spring:
+  application:
+    name: ms-pedidos360-notify
+  # RabbitMQ (ec2-mq): nodos del cluster separados por coma
+  rabbitmq:
+    addresses: ${RABBITMQ_ADDRESSES:localhost:5672}
+    username: ${RABBITMQ_USER:pedidos360}
+    password: ${RABBITMQ_PASSWORD:pedidos360}
+    listener:
+      simple:
+        acknowledge-mode: manual
+        prefetch: 10
+        # Si RabbitMQ no esta disponible al partir, el micro sigue reintentando conectarse
+        missing-queues-fatal: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics

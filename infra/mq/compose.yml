@@ -1,0 +1,49 @@
+# ec2-mq: cluster RabbitMQ de 2 nodos con management UI.
+#   docker compose up -d
+#   UI nodo 1: http://<IP_EC2_MQ>:15672   UI nodo 2: http://<IP_EC2_MQ>:15673   (usuario pedidos360 / pedidos360)
+#   AMQP para los micros: <IP_EC2_MQ>:5672,<IP_EC2_MQ>:5673
+x-rabbit: &rabbit
+  image: rabbitmq:3.13-management
+  restart: unless-stopped
+  environment:
+    # Mismo cookie en ambos nodos para que puedan formar el cluster
+    RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: -setcookie ${RABBITMQ_ERLANG_COOKIE:-pedidos360-cluster-cookie}
+    RABBITMQ_CTL_ERL_ARGS: -setcookie ${RABBITMQ_ERLANG_COOKIE:-pedidos360-cluster-cookie}
+  healthcheck:
+    test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
+    interval: 10s
+    timeout: 10s
+    retries: 12
+    start_period: 20s
+
+services:
+  rabbitmq1:
+    <<: *rabbit
+    hostname: rabbitmq1
+    container_name: rabbitmq1
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - ./rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - ./definitions.json:/etc/rabbitmq/definitions.json:ro
+      - rabbitmq1-data:/var/lib/rabbitmq
+
+  rabbitmq2:
+    <<: *rabbit
+    hostname: rabbitmq2
+    container_name: rabbitmq2
+    ports:
+      - "5673:5672"
+      - "15673:15672"
+    volumes:
+      - ./rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - ./definitions.json:/etc/rabbitmq/definitions.json:ro
+      - rabbitmq2-data:/var/lib/rabbitmq
+    depends_on:
+      rabbitmq1:
+        condition: service_healthy
+
+volumes:
+  rabbitmq1-data:
+  rabbitmq2-data:

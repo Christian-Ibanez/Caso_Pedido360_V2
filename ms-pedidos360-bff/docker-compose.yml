@@ -14,5 +14,8 @@ services:
       - ENTRA_TENANT_ID=${ENTRA_TENANT_ID:-85ffb3f2-fe8a-4eef-9c3d-f1f4983a31b6}
       - API_CLIENT_ID=${API_CLIENT_ID:-c11a2330-26f6-4d03-a29b-9f43c9f47078}
       - ORDERS_URL=${ORDERS_URL:-http://host.docker.internal:8081}
+      - CATALOG_URL=${CATALOG_URL:-http://host.docker.internal:8082}
+      - AUDIT_URL=${AUDIT_URL:-http://host.docker.internal:8084}
+      - REPORT_URL=${REPORT_URL:-http://host.docker.internal:8086}
       - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
     restart: unless-stopped

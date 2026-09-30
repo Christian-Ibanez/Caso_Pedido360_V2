@@ -1,0 +1,123 @@
+# ec2-apps: BFF + orders-svc, catalog-svc, notify-svc, audit-svc, report-svc.
+#   cp .env.example .env   (completar IPs privadas de ec2-mq / ec2-kafka y la base Oracle cloud)
+#   docker compose up -d --build
+# API Gateway -> BFF (:8080) -> micros por la red interna de Docker.
+# Para probar sin base cloud: docker compose --profile oracle-local up -d --build  (y DB_URL con host "oracle")
+x-app: &app
+  restart: unless-stopped
+  environment: &app-env
+    TZ: America/Santiago
+    SPRING_PROFILES_ACTIVE: oracle
+    DB_URL: ${DB_URL}
+    DB_USERNAME: ${DB_USERNAME}
+    DB_PASSWORD: ${DB_PASSWORD}
+    CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+    JAVA_OPTS: -XX:MaxRAMPercentage=75
+  depends_on:
+    oracle:
+      condition: service_healthy
+      required: false
+
+services:
+  bff:
+    build: ../../ms-pedidos360-bff
+    image: pedidos360/ms-pedidos360-bff
+    container_name: bff
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      TZ: America/Santiago
+      ENTRA_TENANT_ID: ${ENTRA_TENANT_ID}
+      API_CLIENT_ID: ${API_CLIENT_ID}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+      ORDERS_URL: http://orders-svc:8081
+      CATALOG_URL: http://catalog-svc:8082
+      AUDIT_URL: http://audit-svc:8084
+      REPORT_URL: http://report-svc:8086
+
+  orders-svc:
+    <<: *app
+    build: ../../ms-pedidos360-orders
+    image: pedidos360/ms-pedidos360-orders
+    container_name: orders-svc
+    ports:
+      - "8081:8081"
+    environment:
+      <<: *app-env
+      MESSAGING_ENABLED: "true"
+      RABBITMQ_ADDRESSES: ${RABBITMQ_ADDRESSES}
+      RABBITMQ_USER: ${RABBITMQ_USER:-pedidos360}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-pedidos360}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+      CATALOG_ENABLED: "true"
+      CATALOG_URL: http://catalog-svc:8082
+
+  catalog-svc:
+    <<: *app
+    build: ../../ms-pedidos360-catalog
+    image: pedidos360/ms-pedidos360-catalog
+    container_name: catalog-svc
+    ports:
+      - "8082:8082"
+
+  # Sin DB y sin API publica: solo consume RabbitMQ (puerto solo para /actuator/health)
+  notify-svc:
+    build: ../../ms-pedidos360-notify
+    image: pedidos360/ms-pedidos360-notify
+    container_name: notify-svc
+    restart: unless-stopped
+    expose:
+      - "8083"
+    environment:
+      TZ: America/Santiago
+      RABBITMQ_ADDRESSES: ${RABBITMQ_ADDRESSES}
+      RABBITMQ_USER: ${RABBITMQ_USER:-pedidos360}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-pedidos360}
+      JAVA_OPTS: -XX:MaxRAMPercentage=75
+
+  audit-svc:
+    <<: *app
+    build: ../../ms-pedidos360-audit
+    image: pedidos360/ms-pedidos360-audit
+    container_name: audit-svc
+    ports:
+      - "8084:8084"
+    environment:
+      <<: *app-env
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+
+  report-svc:
+    <<: *app
+    build: ../../ms-pedidos360-report
+    image: pedidos360/ms-pedidos360-report
+    container_name: report-svc
+    ports:
+      - "8086:8086"
+    environment:
+      <<: *app-env
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+
+  # Opcional: Oracle local si todavia no esta la base cloud (docker compose --profile oracle-local ...)
+  oracle:
+    image: gvenzl/oracle-free:23-slim-faststart
+    container_name: oracle
+    profiles: ["oracle-local"]
+    environment:
+      ORACLE_PASSWORD: ${ORACLE_ADMIN_PASSWORD:-Admin123}
+      APP_USER: ${DB_USERNAME:-pedidos360}
+      APP_USER_PASSWORD: ${DB_PASSWORD:-pedidos360}
+    ports:
+      - "1521:1521"
+    volumes:
+      - oradata:/opt/oracle/oradata
+    healthcheck:
+      test: ["CMD", "healthcheck.sh"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  oradata:

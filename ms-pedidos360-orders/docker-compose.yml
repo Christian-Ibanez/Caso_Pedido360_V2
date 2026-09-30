@@ -31,6 +31,14 @@ services:
       DB_PASSWORD: pedidos360
       ENTRA_TENANT_ID: ${ENTRA_TENANT_ID:-85ffb3f2-fe8a-4eef-9c3d-f1f4983a31b6}
       API_CLIENT_ID: ${API_CLIENT_ID:-c11a2330-26f6-4d03-a29b-9f43c9f47078}
+      # Mensajeria y stock (ver infra/): true cuando RabbitMQ, Kafka y catalogo esten arriba
+      MESSAGING_ENABLED: ${MESSAGING_ENABLED:-false}
+      RABBITMQ_ADDRESSES: ${RABBITMQ_ADDRESSES:-host.docker.internal:5672}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-host.docker.internal:9092}
+      CATALOG_ENABLED: ${CATALOG_ENABLED:-false}
+      CATALOG_URL: ${CATALOG_URL:-http://host.docker.internal:8082}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       oracle:
         condition: service_healthy
