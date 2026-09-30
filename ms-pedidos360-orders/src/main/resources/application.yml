@@ -10,6 +10,23 @@ spring:
     open-in-view: false
     hibernate:
       ddl-auto: update
+  # RabbitMQ (ec2-mq): varios nodos del cluster separados por coma
+  rabbitmq:
+    addresses: ${RABBITMQ_ADDRESSES:localhost:5672}
+    username: ${RABBITMQ_USER:pedidos360}
+    password: ${RABBITMQ_PASSWORD:pedidos360}
+    connection-timeout: 3s
+    publisher-returns: true
+  # Kafka (ec2-kafka): los 3 brokers
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      properties:
+        enable.idempotence: true
+        max.block.ms: 3000
 
 springdoc:
   swagger-ui:
@@ -21,6 +38,13 @@ app:
   cors:
     # Separar varios origenes con coma (5173 = Vite/React)
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  # false = no publica en Kafka/RabbitMQ (desarrollo sin brokers y tests)
+  messaging:
+    enabled: ${MESSAGING_ENABLED:false}
+  # Coordinacion de stock con ms-pedidos360-catalog al aceptar/cancelar
+  catalog:
+    enabled: ${CATALOG_ENABLED:false}
+    url: ${CATALOG_URL:http://localhost:8082}
 
 ---
 # Desarrollo local: H2 en memoria (no necesita nada instalado)

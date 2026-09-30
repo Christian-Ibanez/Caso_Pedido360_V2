@@ -14,6 +14,9 @@ import org.springframework.security.web.SecurityFilterChain;
 public class SecurityConfig {
 
     private static final String SCOPE = "SCOPE_access_as_user";
+    // App roles de Entra ID (claim "roles" -> ROLE_Admin, ROLE_Auditor)
+    private static final String ADMIN = "Admin";
+    private static final String AUDITOR = "Auditor";
 
     @Bean
     SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -27,6 +30,17 @@ public class SecurityConfig {
                 // Permitir cualquier usuario autenticado
                 .requestMatchers(HttpMethod.GET, "/api/data").authenticated()
                 .requestMatchers("/api/orders", "/api/orders/**").authenticated()
+                // Catalogo: movimientos de stock solo los hace ms-orders por la red interna
+                .requestMatchers("/api/catalog/products/stock/**").denyAll()
+                // Catalogo: todos ven productos (el cliente los necesita para pedir); solo Admin los edita
+                .requestMatchers(HttpMethod.GET, "/api/catalog/**").authenticated()
+                .requestMatchers(HttpMethod.POST, "/api/catalog/**").hasRole(ADMIN)
+                .requestMatchers(HttpMethod.PUT, "/api/catalog/**").hasRole(ADMIN)
+                .requestMatchers(HttpMethod.DELETE, "/api/catalog/**").hasRole(ADMIN)
+                // Reporteria: solo Admin, solo lectura
+                .requestMatchers(HttpMethod.GET, "/api/report/**").hasRole(ADMIN)
+                // Auditoria: Admin o Auditor, solo lectura
+                .requestMatchers(HttpMethod.GET, "/api/audit/**").hasAnyRole(ADMIN, AUDITOR)
                 // Todo lo demás se rechaza
                 .anyRequest().denyAll()
             )

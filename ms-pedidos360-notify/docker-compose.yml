@@ -1,0 +1,31 @@
+# Desarrollo: notify + un RabbitMQ de un nodo (la topologia la declara el micro al conectarse).
+# Para EC2 usar infra/mq/compose.yml (cluster de 2 nodos) e infra/apps/compose.yml
+services:
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: ms-notify-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: pedidos360
+      RABBITMQ_DEFAULT_PASS: pedidos360
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+    restart: unless-stopped
+
+  notify-app:
+    build: .
+    container_name: ms-notify-app
+    environment:
+      TZ: America/Santiago
+      RABBITMQ_ADDRESSES: rabbitmq:5672
+      RABBITMQ_USER: pedidos360
+      RABBITMQ_PASSWORD: pedidos360
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
