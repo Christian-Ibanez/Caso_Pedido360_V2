@@ -10,6 +10,10 @@ import java.util.List;
 /**
  * Topologia del caso: 4 flujos (email, cocina, boleta y notificaciones de la campana), cada uno con cola principal + DLQ,
  * exchanges cmd.direct (routing exacto), cmd.topic (patrones) y cmd.dead.dlx (cartas muertas).
+ * Registro permanente (colas sin consumidor, que no se vacian):
+ * - q.audit.history: copia de cada comando publicado (las colas de trabajo se vacian al hacer ACK).
+ * - q.audit.errors: copia de cada mensaje rechazado (NACK); conserva el header x-death con la cola de origen y el
+ *   motivo, aunque el DeadLetterConsumer ya haya procesado la DLQ.
  * Es la misma que carga infra/mq/definitions.json; declararla aqui es idempotente y permite levantar el micro
  * contra un RabbitMQ vacio.
  */
@@ -26,6 +30,10 @@ public class RabbitTopology {
 	/** Notificaciones de la campana (pedido nuevo -> admin, en proceso -> cliente). */
 	public static final String Q_INAPP = "q.notify.inapp";
 	public static final String DLQ_SUFFIX = ".dlq";
+	/** Registro de todos los comandos: durable, sin consumidor y sin limite, para que ningun mensaje desaparezca. */
+	public static final String Q_HISTORY = "q.audit.history";
+	/** Registro de todos los mensajes que fallaron: recibe una copia de lo que llega a cmd.dead.dlx. */
+	public static final String Q_ERRORS = "q.audit.errors";
 
 	/**
 	 * cola, routing key exacta (direct y DLX), patron del exchange topic.
@@ -42,7 +50,7 @@ public class RabbitTopology {
 			new Flow(Q_INAPP, "notify.inapp", "notify.#"));
 
 	@Bean
-	Declarables commandTopology() {
+	public Declarables commandTopology() {
 		DirectExchange direct = new DirectExchange(CMD_DIRECT, true, false);
 		TopicExchange topic = new TopicExchange(CMD_TOPIC, true, false);
 		DirectExchange dlx = new DirectExchange(CMD_DLX, true, false);
@@ -61,6 +69,21 @@ public class RabbitTopology {
 			declarables.add(BindingBuilder.bind(queue).to(direct).with(flow.routingKey()));
 			declarables.add(BindingBuilder.bind(queue).to(topic).with(flow.pattern()));
 			declarables.add(BindingBuilder.bind(dlq).to(dlx).with(flow.routingKey()));
+		}
+
+		// Copia de todo lo que publica orders: en cmd.direct por cada routing key y en cmd.topic con "#"
+		Queue history = QueueBuilder.durable(Q_HISTORY).build();
+		declarables.add(history);
+		for (Flow flow : FLOWS) {
+			declarables.add(BindingBuilder.bind(history).to(direct).with(flow.routingKey()));
+		}
+		declarables.add(BindingBuilder.bind(history).to(topic).with("#"));
+
+		// Copia de todo lo que se rechaza: llega por cmd.dead.dlx junto con la DLQ de cada flujo
+		Queue errors = QueueBuilder.durable(Q_ERRORS).build();
+		declarables.add(errors);
+		for (Flow flow : FLOWS) {
+			declarables.add(BindingBuilder.bind(errors).to(dlx).with(flow.routingKey()));
 		}
 		return new Declarables(declarables);
 	}

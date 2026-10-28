@@ -3,6 +3,7 @@ package com.pedidos360.orders.messaging;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pedidos360.orders.dto.OrderResponse;
+import com.pedidos360.orders.messaging.unsent.UnsentMessageLog;
 import com.pedidos360.orders.model.OrderStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,6 +33,7 @@ public class OrderMessagingListener {
 	private final KafkaTemplate<String, String> kafkaTemplate;
 	private final RabbitTemplate rabbitTemplate;
 	private final ObjectMapper objectMapper;
+	private final UnsentMessageLog unsentMessages;
 
 	@Value("${app.messaging.enabled:false}")
 	private boolean enabled;
@@ -201,6 +203,8 @@ public class OrderMessagingListener {
 			log.info("RabbitMQ {} -> {} [{}] pedido {}", command.type(), exchange, routingKey, command.payload().get("orderId"));
 		} catch (RuntimeException ex) {
 			log.error("No se pudo enviar {} a {} [{}]: {}", command.type(), exchange, routingKey, ex.getMessage());
+			// Queda registrado en P360_UNSENT_MESSAGES y se reintenta cada 30 s
+			unsentMessages.recordFailure(exchange, routingKey, command, ex);
 		}
 	}
 }
