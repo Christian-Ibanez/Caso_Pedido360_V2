@@ -1,14 +1,17 @@
 # Pedidos360 – Despliegue en AWS EC2 con Docker Compose
 
-Tres instancias EC2, un `compose.yml` por instancia (según el enunciado):
+Tres instancias EC2, un `compose.yml` por instancia. El frontend corre en el equipo local.
 
 | Instancia | Carpeta | Qué levanta | Tamaño sugerido |
 |---|---|---|---|
-| `ec2-apps` | `infra/apps` | BFF + orders, catalog, notify, audit, report (+ Oracle local opcional) | t3.large (6 JVM) |
+| `ec2-apps` | `infra/apps` | Oracle Free + orders, catalog, notify | t3.large (Oracle + 3 JVM) |
 | `ec2-mq` | `infra/mq` | Cluster RabbitMQ de 2 nodos con management UI | t3.medium |
-| `ec2-kafka` | `infra/kafka` | 3 Zookeeper + 3 brokers Kafka + Kafka UI + creación de tópicos | t3.large (8 GB) |
+| `ec2-bff` | `infra/bff` | BFF (valida el JWT de Entra ID y enruta a los micros) | t3.medium |
+| (local) | `frontend` | React + MSAL con `npm run dev` en `http://localhost:5173` | – |
 
-Flujo: `frontend (MSAL) -> API Gateway (JWT authorizer Entra ID) -> BFF :8080 (valida JWT + rol) -> microservicios`.
+Flujo: `frontend local (MSAL / Entra ID) -> BFF :8080 en ec2-bff (valida JWT + rol) -> orders/catalog en ec2-apps (IP privada) -> RabbitMQ en ec2-mq -> notify`.
+
+**Kafka no está desplegado.** `orders` corre con `KAFKA_ENABLED=false`: los comandos a RabbitMQ salen igual y solo se omite el evento en `orders.events`. `audit` y `report` (consumidores de Kafka) quedan fuera; se levantan con el perfil `kafka` de `infra/apps` cuando exista una instancia con `infra/kafka` (ver sección 7).
 
 ## 1. Preparar cada EC2 (Amazon Linux 2023)
 
@@ -18,11 +21,17 @@ sudo systemctl enable --now docker
 sudo usermod -aG docker ec2-user && newgrp docker
 sudo mkdir -p /usr/local/lib/docker/cli-plugins
 sudo curl -SL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64 \
-  -o /usr/local/lib/docker/cli-plugins/docker-compose && sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+  -o /usr/local/lib/docker/cli-plugins/docker-compose
+# docker compose --build necesita buildx >= 0.17 (Amazon Linux no lo trae)
+sudo curl -SL https://github.com/docker/buildx/releases/download/v0.19.3/buildx-v0.19.3.linux-amd64 \
+  -o /usr/local/lib/docker/cli-plugins/docker-buildx
+sudo chmod +x /usr/local/lib/docker/cli-plugins/*
 git clone https://github.com/Christian-Ibanez/Caso_Pedido360_V2.git && cd Caso_Pedido360_V2
 ```
 
-Levantar en este orden: **mq**, **kafka**, **apps**.
+Disco: 20–30 GB por instancia (las imágenes de Maven/Java y Oracle no caben en los 8 GB por defecto).
+
+Levantar en este orden: **mq**, **apps**, **bff**.
 
 ### ec2-mq
 ```bash
@@ -30,51 +39,57 @@ cd infra/mq && cp .env.example .env   # cambiar el cookie
 docker compose up -d
 docker exec rabbitmq1 rabbitmqctl cluster_status   # Running Nodes: rabbit@rabbitmq1, rabbit@rabbitmq2
 ```
-UI: `http://<IP_MQ>:15672` y `:15673` (usuario `pedidos360` / `pedidos360`, cambiarlo con `rabbitmqctl change_password`).
-La topología se carga sola desde `definitions.json`.
-
-### ec2-kafka
-```bash
-cd infra/kafka && cp .env.example .env   # KAFKA_PUBLIC_HOST = IP privada de ec2-kafka
-docker compose up -d
-docker logs kafka-init                    # debe listar los 4 tópicos con 3 particiones y 3 réplicas
-```
-Kafka UI: `http://<IP_KAFKA>:8090` (usuario/clave de `.env`). Desde ahí se administran brokers, tópicos y configuraciones.
+UI: `http://<IP_PUBLICA_MQ>:15672` y `:15673` (usuario `pedidos360` / `pedidos360`, cambiarlo con `rabbitmqctl change_password`).
+La topología (3 colas + 3 DLQ, exchanges y bindings) se carga sola desde `definitions.json`.
 
 ### ec2-apps
 ```bash
-cd infra/apps && cp .env.example .env    # IPs privadas de mq/kafka, base Oracle cloud, tenant de Entra ID
+cd infra/apps && cp .env.example .env    # RABBITMQ_ADDRESSES = IP privada de ec2-mq
 docker compose up -d --build
-# Sin base cloud todavía: DB_URL=jdbc:oracle:thin:@//oracle:1521/FREEPDB1 y
-docker compose --profile oracle-local up -d --build
+docker ps                                # oracle (healthy), orders-svc, catalog-svc, notify-svc
 ```
-Swagger de cada micro: `http://<IP_APPS>:<puerto>/swagger-ui.html`.
+Oracle tarda ~1 min en quedar `healthy`; los micros esperan a que lo esté. Swagger: `http://<IP_PUBLICA_APPS>:8081/swagger-ui.html` (orders) y `:8082` (catalog).
+
+### ec2-bff
+```bash
+cd infra/bff && cp .env.example .env     # APPS_HOST = IP privada de ec2-apps
+docker compose up -d --build
+curl -s -o /dev/null -w '%{http_code}\n' localhost:8080/api/orders   # 401 sin token = OK
+```
+
+### Frontend (local)
+```bash
+cd frontend
+echo "VITE_API_BASE_URL=http://<IP_PUBLICA_EC2_BFF>:8080" > .env.local
+npm install && npm run dev               # http://localhost:5173
+```
+La IP pública cambia cada vez que la instancia se detiene; las privadas (las de los `.env` de `infra/`) se mantienen.
 
 ## 2. Security Groups
 
 | SG | Entrada | Origen |
 |---|---|---|
-| `sg-apps` | 8080 (BFF) | API Gateway (o 0.0.0.0/0 si el HTTP API llega por internet) |
-| `sg-apps` | 8081-8086 (Swagger/pruebas) | solo tu IP |
-| `sg-mq` | 5672-5673 (AMQP) | `sg-apps` |
-| `sg-mq` | 15672-15673 (UI) | solo tu IP |
-| `sg-kafka` | 9092-9094 (brokers) | `sg-apps` |
-| `sg-kafka` | 8090 (Kafka UI) | solo tu IP |
+| `p360-bff` | 8080 (BFF) | 0.0.0.0/0 (el navegador del usuario llama directo al BFF) |
+| `p360-apps` | 8081-8082 (orders, catalog) | `p360-bff` |
+| `p360-apps` | 8081-8086 (Swagger/pruebas) | solo tu IP |
+| `p360-apps` | 1521 (Oracle, SQL Developer) | solo tu IP |
+| `p360-mq` | 5672-5673 (AMQP) | `p360-apps` |
+| `p360-mq` | 15672-15673 (UI) | solo tu IP |
 | todos | 22 (SSH) | solo tu IP |
 
-## 3. API Gateway (HTTP API)
+(Los nombres de security group no pueden empezar con `sg-`, por eso el prefijo `p360-`.)
 
-- Authorizer JWT: issuer `https://login.microsoftonline.com/<TENANT_ID>/v2.0`, audience `api://<API_CLIENT_ID>` (o el client id, según cómo emita el token el tenant).
-- Rutas (todas con el authorizer, integración HTTP proxy al BFF):
+## 3. Microsoft Entra ID
 
-| Ruta | Integración |
-|---|---|
-| `ANY /api/orders` y `ANY /api/orders/{proxy+}` | `http://<IP_APPS>:8080/api/orders/{proxy}` |
-| `ANY /api/catalog/{proxy+}` | `http://<IP_APPS>:8080/api/catalog/{proxy}` |
-| `GET /api/report/{proxy+}` | `http://<IP_APPS>:8080/api/report/{proxy}` |
-| `GET /api/audit/{proxy+}` | `http://<IP_APPS>:8080/api/audit/{proxy}` |
+El login del frontend se hace con Microsoft Entra ID (tenant `85ffb3f2-fe8a-4eef-9c3d-f1f4983a31b6`).
 
-- CORS en el HTTP API: origen del front, métodos GET/POST/PUT/DELETE/OPTIONS, header `Authorization, Content-Type`.
+- App del frontend `spa-fullstack` (`0f1c9d10-…`): plataforma SPA con redirect URIs `http://localhost:5173` y `http://localhost:5173/redirect.html`.
+- App de la API `api-fullstack` (`c11a2330-…`): expone el scope `access_as_user`, `requestedAccessTokenVersion: 2` en el manifiesto (el BFF valida el issuer `…/v2.0` y la audiencia = client id) y define el app role `Admin`.
+- Los usuarios deben existir en el tenant; el rol `Admin` se asigna en Aplicaciones empresariales → `api-fullstack` → Usuarios y grupos.
+
+### API Gateway (opcional)
+
+Si se quiere un HTTP API delante del BFF: authorizer JWT con issuer `https://login.microsoftonline.com/<TENANT_ID>/v2.0` y audience `<API_CLIENT_ID>`, rutas `ANY /api/orders`, `ANY /api/orders/{proxy+}` y `ANY /api/catalog/{proxy+}` con integración HTTP proxy a `http://<IP_PUBLICA_BFF>:8080/...`, y CORS para el origen del frontend. En ese caso `VITE_API_BASE_URL` apunta a la URL del API Gateway.
 
 ## 4. Endpoints y roles (el BFF valida el rol del claim `roles`)
 
@@ -85,18 +100,18 @@ Swagger de cada micro: `http://<IP_APPS>:<puerto>/swagger-ui.html`.
 | catalog | 8082 | `POST /api/catalog/products`, `PUT /api/catalog/products/{id}` (precio/stock, parcial), `DELETE /api/catalog/products/{id}` | Admin |
 | catalog | 8082 | `POST /api/catalog/products/stock/decrease` y `/increase` | solo interno (orders); el BFF los bloquea |
 | notify | 8083 | sin API pública (consumidor RabbitMQ; `/actuator/health`, `/actuator/metrics/pedidos360.dlq.messages`) | – |
-| audit | 8084 | `GET /api/audit/events?user=&type=&orderId=&from=&to=&limit=`, `GET /api/audit/events/{id}`, `GET /api/audit/orders/{orderId}/timeline`, `GET /api/audit/event-types`, `GET /api/audit/actors` | Admin, Auditor |
-| report | 8086 | `GET /api/report/kpis?range=last24h`, `GET /api/report/top-products?range=last7d&limit=5`, `GET /api/report/sales-by-hour?range=`, `GET /api/report/lead-time?range=` | Admin |
+| audit (requiere Kafka) | 8084 | `GET /api/audit/events?user=&type=&orderId=&from=&to=&limit=`, `GET /api/audit/events/{id}`, `GET /api/audit/orders/{orderId}/timeline`, `GET /api/audit/event-types`, `GET /api/audit/actors` | Admin, Auditor |
+| report (requiere Kafka) | 8086 | `GET /api/report/kpis?range=last24h`, `GET /api/report/top-products?range=last7d&limit=5`, `GET /api/report/sales-by-hour?range=`, `GET /api/report/lead-time?range=` | Admin |
 
 `range` acepta `lastNh` o `lastNd` (p. ej. `last24h`, `last7d`, `last30d`).
 
 ## 5. Flujo de negocio
 
-1. `POST /api/orders` → pedido `CREADO`, evento `OrderCreated` en Kafka y comando `email.send` en RabbitMQ.
+1. `POST /api/orders` → pedido `CREADO`, evento `OrderCreated` en Kafka (si `KAFKA_ENABLED=true`) y comando `email.send` en RabbitMQ.
 2. `PUT .../status ACEPTADO` → orders llama a catalog `stock/decrease` (si falta stock responde **409** y el pedido sigue `CREADO`), evento `OrderAccepted`, `email.send` + `kitchen.ticket`.
 3. `EN_PREPARACION`, `DESPACHADO` (no se puede sin aceptar: 409), `ENTREGADO` → eventos `OrderPreparing/Dispatched/Delivered`; al entregar además `invoice.gen.pdf` (boleta).
 4. `CANCELADO` → `OrderCancelled`, correo prioritario `email.send.high` por `cmd.topic`; si ya había descontado stock, se repone.
-5. audit y report consumen `orders.events` con grupos distintos: auditoría guarda quién/qué/cuándo/desde dónde y publica en `audit.timeline`; reportería arma los KPIs sin llamar a orders (no bloquea el core).
+5. (Con Kafka) audit y report consumen `orders.events` con grupos distintos: auditoría guarda quién/qué/cuándo/desde dónde y publica en `audit.timeline`; reportería arma los KPIs sin llamar a orders (no bloquea el core).
 
 La publicación ocurre después del commit y en un hilo aparte: si Kafka o RabbitMQ están caídos el pedido igual se guarda.
 
@@ -114,7 +129,9 @@ La publicación ocurre después del commit y en un hilo aparte: si Kafka o Rabbi
 - Idempotencia: notify recuerda los `eventId` procesados y hace ACK sin reenviar los duplicados.
 - **Demo de DLQ**: crear un pedido con `customerEmail` que termine en `@fail.test`.
 
-## 7. Kafka
+## 7. Kafka (no desplegado por ahora)
+
+Para activarlo: levantar `infra/kafka` en una instancia propia, en `infra/apps/.env` poner `KAFKA_ENABLED=true` y `KAFKA_BOOTSTRAP_SERVERS`, y ejecutar `docker compose --profile kafka up -d --build` (agrega audit y report). En el BFF, `AUDIT_URL`/`REPORT_URL` ya apuntan a `ec2-apps`.
 
 | Tópico | Particiones | Réplicas | Política | Retención |
 |---|---|---|---|---|
@@ -127,6 +144,6 @@ La publicación ocurre después del commit y en un hilo aparte: si Kafka o Rabbi
 - Consumidores: 3 reintentos (1 s) y luego el mensaje original va a su DLT con headers de error (excepción, stacktrace, tópico/partición/offset original, timestamp).
 - **Demo de DLT**: desde Kafka UI producir en `orders.events` un mensaje que no sea JSON; aparece en ambos DLT.
 
-## 8. Oracle cloud
+## 8. Oracle
 
-Todas las tablas tienen prefijo `P360_` (`P360_ORDERS`, `P360_PRODUCTS`, `P360_AUDIT_EVENTS`, `P360_RPT_*`), por lo que los micros pueden usar el mismo usuario. `ddl-auto: update` crea las tablas al partir. Para Autonomous DB sin wallet usar la cadena TLS completa en `DB_URL` (ejemplo en `infra/apps/.env.example`).
+Por defecto Oracle Free corre como contenedor en `ec2-apps` (volumen `oradata`, servicio `FREEPDB1`, usuario `pedidos360`). Todas las tablas tienen prefijo `P360_` (`P360_ORDERS`, `P360_PRODUCTS`, `P360_AUDIT_EVENTS`, `P360_RPT_*`), por lo que los micros pueden usar el mismo usuario. `ddl-auto: update` crea las tablas al partir. Para Autonomous DB sin wallet usar la cadena TLS completa en `DB_URL` (ejemplo en `infra/apps/.env.example`).
