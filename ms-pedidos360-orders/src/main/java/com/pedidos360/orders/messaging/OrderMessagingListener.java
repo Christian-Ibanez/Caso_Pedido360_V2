@@ -21,6 +21,8 @@ import java.util.Map;
 /**
  * Publica despues del commit y en otro hilo: si Kafka o RabbitMQ estan caidos el pedido igual queda guardado
  * y la API responde (el core no se bloquea). Con app.messaging.enabled=false (perfil local/tests) no publica nada.
+ * Con app.kafka.enabled=false se envian igual los comandos a RabbitMQ, pero no se publica en Kafka
+ * (despliegue sin cluster Kafka: audit/report no estan levantados).
  */
 @Slf4j
 @Component
@@ -34,6 +36,9 @@ public class OrderMessagingListener {
 	@Value("${app.messaging.enabled:false}")
 	private boolean enabled;
 
+	@Value("${app.kafka.enabled:true}")
+	private boolean kafkaEnabled;
+
 	@Async("messagingExecutor")
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
 	public void on(OrderEvent event) {
@@ -41,7 +46,12 @@ public class OrderMessagingListener {
 			log.debug("Mensajeria desactivada, no se publica {} del pedido {}", event.type(), event.orderId());
 			return;
 		}
-		publishEvent(event);
+		if (kafkaEnabled) {
+			publishEvent(event);
+		} else {
+			log.debug("Kafka desactivado, no se publica {} del pedido {} en {}", event.type(), event.orderId(),
+					MessagingTopology.ORDERS_EVENTS_TOPIC);
+		}
 		sendCommands(event);
 	}
 
