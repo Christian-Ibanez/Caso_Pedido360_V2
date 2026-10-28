@@ -10,7 +10,10 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import lombok.extern.slf4j.Slf4j;
+import com.pedidos360.orders.messaging.unsent.UnsentMessageLog;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.util.concurrent.Executor;
@@ -18,6 +21,7 @@ import java.util.concurrent.Executor;
 @Slf4j
 @Configuration
 @EnableAsync
+@EnableScheduling
 public class MessagingConfig {
 
 	/** Un solo hilo: los eventos de un pedido salen en el mismo orden en que ocurrieron. */
@@ -38,13 +42,20 @@ public class MessagingConfig {
 		return new Jackson2JsonMessageConverter(objectMapper);
 	}
 
-	/** Mensajes que ningun binding acepta (routing key mal escrita) quedan en el log en vez de perderse en silencio. */
+	/**
+	 * Mensajes que ningun binding acepta (routing key mal escrita) no se pierden en silencio: quedan en el log
+	 * y en P360_UNSENT_MESSAGES con estado SIN_RUTA.
+	 */
 	@Bean
-	RabbitTemplateCustomizer returnsLogger() {
+	RabbitTemplateCustomizer returnsLogger(ObjectProvider<UnsentMessageLog> unsent) {
 		return template -> {
 			template.setMandatory(true);
-			template.setReturnsCallback(r -> log.error("RabbitMQ devolvio el mensaje: exchange={} routingKey={} motivo={} {}",
-					r.getExchange(), r.getRoutingKey(), r.getReplyCode(), r.getReplyText()));
+			template.setReturnsCallback(r -> {
+				log.error("RabbitMQ devolvio el mensaje: exchange={} routingKey={} motivo={} {}",
+						r.getExchange(), r.getRoutingKey(), r.getReplyCode(), r.getReplyText());
+				unsent.ifAvailable(u -> u.recordReturned(r.getMessage(), r.getExchange(), r.getRoutingKey(),
+						r.getReplyCode() + " " + r.getReplyText()));
+			});
 		};
 	}
 

@@ -6,6 +6,9 @@ import com.pedidos360.orders.messaging.MessagingTopology;
 import com.pedidos360.orders.messaging.OrderEvent;
 import com.pedidos360.orders.messaging.OrderMessagingListener;
 import com.pedidos360.orders.messaging.RequestMetadata;
+import com.pedidos360.orders.messaging.Command;
+import com.pedidos360.orders.messaging.unsent.UnsentMessageLog;
+import org.springframework.amqp.AmqpConnectException;
 import com.pedidos360.orders.model.OrderStatus;
 import org.junit.jupiter.api.Test;
 import java.util.Map;
@@ -27,6 +30,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.atLeastOnce;
 
 /** Con app.kafka.enabled=false los comandos siguen saliendo por RabbitMQ y no se toca Kafka. */
 class OrderMessagingListenerTest {
@@ -34,7 +39,8 @@ class OrderMessagingListenerTest {
 	@SuppressWarnings("unchecked")
 	private final KafkaTemplate<String, String> kafka = mock(KafkaTemplate.class);
 	private final RabbitTemplate rabbit = mock(RabbitTemplate.class);
-	private final OrderMessagingListener listener = new OrderMessagingListener(kafka, rabbit, new ObjectMapper().findAndRegisterModules());
+	private final UnsentMessageLog unsent = mock(UnsentMessageLog.class);
+	private final OrderMessagingListener listener = new OrderMessagingListener(kafka, rabbit, new ObjectMapper().findAndRegisterModules(), unsent);
 
 	private OrderEvent aceptado() {
 		OrderResponse order = new OrderResponse(7L, 1L, "Ana", "ana@mail.com", null, null, OrderStatus.ACEPTADO,
@@ -79,5 +85,18 @@ class OrderMessagingListenerTest {
 		listener.on(aceptado());
 
 		verify(kafka).send(eq(MessagingTopology.ORDERS_EVENTS_TOPIC), eq("7"), anyString());
+	}
+
+	@Test
+	void siRabbitEstaCaidoElComandoQuedaRegistradoParaReintento() {
+		ReflectionTestUtils.setField(listener, "enabled", true);
+		ReflectionTestUtils.setField(listener, "kafkaEnabled", false);
+		doThrow(new AmqpConnectException(new java.net.ConnectException("Connection refused")))
+				.when(rabbit).convertAndSend(anyString(), anyString(), any(Object.class), any(MessagePostProcessor.class));
+
+		listener.on(aceptado());
+
+		verify(unsent, atLeastOnce()).recordFailure(eq(MessagingTopology.CMD_DIRECT), eq(MessagingTopology.RK_INAPP),
+				any(Command.class), any(Exception.class));
 	}
 }

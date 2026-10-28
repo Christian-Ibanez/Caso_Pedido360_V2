@@ -40,7 +40,7 @@ docker compose up -d
 docker exec rabbitmq1 rabbitmqctl cluster_status   # Running Nodes: rabbit@rabbitmq1, rabbit@rabbitmq2
 ```
 UI: `http://<IP_PUBLICA_MQ>:15672` y `:15673` (usuario `pedidos360` / `pedidos360`, cambiarlo con `rabbitmqctl change_password`).
-La topología (3 colas + 3 DLQ, exchanges y bindings) se carga sola desde `definitions.json`.
+La topología (4 colas + 4 DLQ, 2 colas de registro, exchanges y bindings) se carga sola desde `definitions.json`.
 
 ### ec2-apps
 ```bash
@@ -122,6 +122,8 @@ La publicación ocurre después del commit y en un hilo aparte: si Kafka o Rabbi
 | cmd.direct | direct | q.cmd.email / q.cmd.kitchen / q.cmd.invoice / q.notify.inapp | email.send / kitchen.ticket / invoice.gen / notify.inapp |
 | cmd.topic | topic | q.cmd.email / q.cmd.kitchen / q.cmd.invoice / q.notify.inapp | email.# / kitchen.# / invoice.# / notify.# |
 | cmd.dead.dlx | direct | q.cmd.email.dlq / q.cmd.kitchen.dlq / q.cmd.invoice.dlq / q.notify.inapp.dlq | email.send / kitchen.ticket / invoice.gen / notify.inapp |
+| cmd.direct + cmd.topic | | q.audit.history | las 4 routing keys + `#` |
+| cmd.dead.dlx | direct | q.audit.errors | las 4 routing keys |
 
 - En AMQP `*` es exactamente una palabra, así que `email.*` no recibe `email.send.high` (el ejemplo del enunciado); por eso se usa `#`.
 - Envelope común: `type, eventId, timestamp, traceId, correlationId, payload`.
@@ -129,6 +131,23 @@ La publicación ocurre después del commit y en un hilo aparte: si Kafka o Rabbi
 - Idempotencia: notify recuerda los `eventId` procesados y hace ACK sin reenviar los duplicados.
 - **Campana de notificaciones** (comando `InAppNotify` por `notify.inapp` -> `q.notify.inapp`): cuando un cliente crea un pedido, orders avisa a los administradores ("Nuevo pedido #N"); cuando el administrador lo confirma (CREADO -> ACEPTADO, en proceso) el cliente recibe "Tu pedido #N está en proceso", y luego un aviso por cada cambio de estado. notify las guarda en `P360_NOTIFICATIONS` (eventId único) y el frontend las consulta cada 10 s a través del BFF.
 - **Demo de DLQ**: crear un pedido con `customerEmail` que termine en `@fail.test`.
+
+### Registro de mensajes
+
+Las colas de trabajo quedan en 0 porque notify confirma (ACK) cada mensaje y RabbitMQ lo borra. Para que siempre quede registro:
+
+| Dónde | Qué guarda |
+|---|---|
+| `q.audit.history` (RabbitMQ) | Copia de **cada** comando publicado (correo, cocina, boleta, campana). Sin consumidor ni límite: los mensajes no desaparecen. |
+| `q.audit.errors` (RabbitMQ) | Copia de cada mensaje **rechazado** (NACK). El header `x-death` indica la cola de origen, el motivo y cuántas veces falló. |
+| `P360_UNSENT_MESSAGES` (Oracle, orders) | Comandos que **no se pudieron publicar** (RabbitMQ caído o sin cola de destino). Se reintentan cada 30 s; al enviarse pasan a `ENVIADO` con `SENT_AT`, pero la fila no se borra. |
+
+Para verlos en la consola (`:15672`): Queues → `q.audit.history` o `q.audit.errors` → **Get messages**, con *Ack mode* en **Nack message requeue true** para que el mensaje siga en la cola después de leerlo.
+
+```sql
+SELECT id, message_type, routing_key, status, attempts, last_error, created_at, sent_at
+FROM P360_UNSENT_MESSAGES ORDER BY id DESC;
+```
 
 ## 7. Kafka (no desplegado por ahora)
 
