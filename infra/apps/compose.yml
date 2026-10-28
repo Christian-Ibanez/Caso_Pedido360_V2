@@ -2,7 +2,7 @@
 #   cp .env.example .env   (completar la IP privada de ec2-mq)
 #   docker compose up -d --build
 # Levanta: oracle, orders-svc, catalog-svc, notify-svc.
-# El BFF va en su propia instancia (infra/bff) y llega a orders/catalog por la IP privada de esta instancia.
+# El BFF va en su propia instancia (infra/bff) y llega a orders/catalog/notify por la IP privada de esta instancia.
 # audit-svc y report-svc consumen Kafka: solo se levantan con el perfil "kafka" cuando exista ec2-kafka
 #   docker compose --profile kafka up -d --build   (y KAFKA_ENABLED=true + KAFKA_BOOTSTRAP_SERVERS en .env)
 x-app: &app
@@ -67,20 +67,20 @@ services:
     ports:
       - "8082:8082"
 
-  # Sin DB y sin API publica: solo consume RabbitMQ (puerto solo para /actuator/health)
+  # Consume RabbitMQ (correo, cocina, boleta y campana) y guarda las notificaciones de la campana en Oracle.
+  # API /api/notifications solo para el BFF (el SG p360-apps abre 8083 solo desde p360-bff)
   notify-svc:
+    <<: *app
     build: ../../ms-pedidos360-notify
     image: pedidos360/ms-pedidos360-notify
     container_name: notify-svc
-    restart: unless-stopped
-    expose:
-      - "8083"
+    ports:
+      - "8083:8083"
     environment:
-      TZ: America/Santiago
+      <<: *app-env
       RABBITMQ_ADDRESSES: ${RABBITMQ_ADDRESSES}
       RABBITMQ_USER: ${RABBITMQ_USER:-pedidos360}
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-pedidos360}
-      JAVA_OPTS: -XX:MaxRAMPercentage=75
 
   # --- Solo con ec2-kafka (perfil "kafka") ---
   audit-svc:

@@ -32,7 +32,8 @@ public class DeadLetterConsumer {
 	@RabbitListener(queues = {
 			RabbitTopology.Q_EMAIL + RabbitTopology.DLQ_SUFFIX,
 			RabbitTopology.Q_KITCHEN + RabbitTopology.DLQ_SUFFIX,
-			RabbitTopology.Q_INVOICE + RabbitTopology.DLQ_SUFFIX }, ackMode = "MANUAL")
+			RabbitTopology.Q_INVOICE + RabbitTopology.DLQ_SUFFIX,
+			RabbitTopology.Q_INAPP + RabbitTopology.DLQ_SUFFIX }, ackMode = "MANUAL")
 	public void onDeadLetter(Message message, Channel channel) throws IOException {
 		MessageProperties props = message.getMessageProperties();
 		String dlq = props.getConsumerQueue();

@@ -31,6 +31,13 @@ class SecurityRulesTest {
 	}
 
 	@Test
+	void campanaDeNotificacionesPideToken() throws Exception {
+		mvc.perform(get("/api/notifications")).andExpect(status().isUnauthorized());
+		mvc.perform(get("/api/notifications").with(jwt().authorities(new SimpleGrantedAuthority("SCOPE_otra.cosa"))))
+				.andExpect(status().isForbidden());
+	}
+
+	@Test
 	void tokenSinScopeDeLaApiEsRechazado() throws Exception {
 		mvc.perform(get("/api/orders").with(jwt().authorities(new SimpleGrantedAuthority("SCOPE_otra.cosa"))))
 				.andExpect(status().isForbidden());

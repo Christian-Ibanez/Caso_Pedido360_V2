@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../api/http';
 import { getCatalogProducts } from '../api/catalog';
+import { NEW_NOTIFICATIONS_EVENT } from '../lib/notifications';
+import { publishPendingCount } from '../components/Layout';
 
 /** Catálogo completo (se filtra en el navegador) y un mapa por id. */
 export function useCatalog() {
@@ -54,6 +56,15 @@ export function useOrders() {
   }, []);
 
   useEffect(() => { reload(); }, [reload]);
+
+  // Cuando la campana trae un aviso nuevo (pedido creado o confirmado vía RabbitMQ), refresca la lista
+  useEffect(() => {
+    const onNew = () => {
+      reload({ silent: true }).then((data) => { if (data) publishPendingCount(data); });
+    };
+    window.addEventListener(NEW_NOTIFICATIONS_EVENT, onNew);
+    return () => window.removeEventListener(NEW_NOTIFICATIONS_EVENT, onNew);
+  }, [reload]);
 
   return { orders, setOrders, loading, error, reload };
 }

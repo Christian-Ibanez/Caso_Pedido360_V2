@@ -9,7 +9,7 @@ import { IconArrow, IconRefresh } from './Icons';
 
 const EVENT_LABEL = {
   OrderCreated: 'Pedido creado',
-  OrderAccepted: 'Aceptado',
+  OrderAccepted: 'Confirmado',
   OrderPreparing: 'En preparación',
   OrderDispatched: 'Despachado',
   OrderDelivered: 'Entregado',

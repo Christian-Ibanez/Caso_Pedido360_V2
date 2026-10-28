@@ -4,9 +4,11 @@ import { NavLink } from 'react-router-dom';
 import { useRoles, clearRolesCache } from '../hooks/useRoles';
 import { api } from '../api/http';
 import { clearCart } from '../lib/cart';
+import { resetNotifications } from '../lib/notifications';
+import NotificationBell from './NotificationBell';
 import { IconBag, IconHome, IconTag, IconChart, IconShield, IconLogout } from './Icons';
 
-// Cantidad de pedidos por aceptar (insignia del menú para Admin/Operador).
+// Cantidad de pedidos por confirmar (insignia del menú para Admin/Operador).
 let pendingCache = { value: null, at: 0 };
 const listeners = new Set();
 
@@ -57,6 +59,7 @@ export default function Layout({ title, children }) {
   const handleLogout = () => {
     clearRolesCache();
     clearCart();
+    resetNotifications();
     instance.logoutRedirect({ postLogoutRedirectUri: `${window.location.origin}/login` });
   };
 
@@ -90,7 +93,7 @@ export default function Layout({ title, children }) {
             {!isAuditor || isStaff ? (
               <NavLink to="/orders" className={navClass}>
                 <IconBag /> <span className="nav-label">{isStaff ? 'Pedidos' : 'Mis pedidos'}</span>
-                {isStaff && pending > 0 && <span className="nav-badge" aria-label={`${pending} por aceptar`}>{pending}</span>}
+                {isStaff && pending > 0 && <span className="nav-badge" aria-label={`${pending} por confirmar`}>{pending}</span>}
               </NavLink>
             ) : null}
             <NavLink to="/catalog" className={navClass}>
@@ -126,7 +129,12 @@ export default function Layout({ title, children }) {
         </div>
       </aside>
 
-      <main className="main">{children}</main>
+      <main className="main">
+        <div className="topbar">
+          <NotificationBell />
+        </div>
+        {children}
+      </main>
     </div>
   );
 }

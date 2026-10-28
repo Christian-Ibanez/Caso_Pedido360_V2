@@ -30,6 +30,8 @@ public class SecurityConfig {
                 // Permitir cualquier usuario autenticado con el scope de la API
                 .requestMatchers(HttpMethod.GET, "/api/data").hasAuthority(SCOPE)
                 .requestMatchers("/api/orders", "/api/orders/**").hasAuthority(SCOPE)
+                // Campana de notificaciones: cada usuario ve las suyas (el BFF agrega correo y roles del JWT)
+                .requestMatchers("/api/notifications", "/api/notifications/**").hasAuthority(SCOPE)
                 // Catalogo: movimientos de stock solo los hace ms-orders por la red interna
                 .requestMatchers("/api/catalog/products/stock/**").denyAll()
                 // Catalogo: todos ven productos (el cliente los necesita para pedir); solo Admin los edita

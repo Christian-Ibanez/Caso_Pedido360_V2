@@ -106,6 +106,73 @@ public class OrderMessagingListener {
 			invoice.put("items", order.items());
 			send(MessagingTopology.CMD_TOPIC, MessagingTopology.RK_INVOICE_PDF, Command.of("InvoiceGenerate", event, invoice));
 		}
+
+		Map<String, Object> inApp = inAppPayload(event);
+		if (inApp != null) {
+			send(MessagingTopology.CMD_DIRECT, MessagingTopology.RK_INAPP, Command.of("InAppNotify", event, inApp));
+		}
+	}
+
+	/**
+	 * Notificacion de la campana: pedido nuevo -> administradores; cambio de estado -> el cliente del pedido.
+	 * Al confirmar (ACEPTADO) el cliente recibe "tu pedido esta en proceso".
+	 */
+	public static Map<String, Object> inAppPayload(OrderEvent event) {
+		OrderResponse order = event.order();
+		if (order == null || event.status() == null) {
+			return null;
+		}
+		Long id = order.id();
+		String audience = "CUSTOMER";
+		String title;
+		String body;
+		switch (event.status()) {
+			case CREADO -> {
+				audience = "ADMIN";
+				title = "Nuevo pedido #" + id;
+				body = order.customerName() + " hizo un pedido por " + clp(order.total())
+						+ ". Confírmalo para pasarlo a en proceso.";
+			}
+			case ACEPTADO -> {
+				title = "Tu pedido #" + id + " está en proceso";
+				body = "Confirmamos tu pedido y la cocina ya lo recibió.";
+			}
+			case EN_PREPARACION -> {
+				title = "Estamos preparando tu pedido #" + id;
+				body = "Tu pedido ya se está preparando.";
+			}
+			case DESPACHADO -> {
+				title = "Tu pedido #" + id + " va en camino";
+				body = "Lo despachamos a " + (order.deliveryAddress() != null ? order.deliveryAddress() : "tu dirección") + ".";
+			}
+			case ENTREGADO -> {
+				title = "Tu pedido #" + id + " fue entregado";
+				body = "Gracias por tu compra. Te enviamos la boleta electrónica a tu correo.";
+			}
+			case CANCELADO -> {
+				title = "Tu pedido #" + id + " fue cancelado";
+				body = "Si no lo cancelaste tú, contáctanos.";
+			}
+			default -> {
+				return null;
+			}
+		}
+		Map<String, Object> payload = new LinkedHashMap<>();
+		payload.put("audience", audience);
+		payload.put("recipient", "ADMIN".equals(audience) ? null : order.customerEmail());
+		payload.put("orderId", id);
+		payload.put("status", event.status());
+		payload.put("previousStatus", event.previousStatus());
+		payload.put("title", title);
+		payload.put("body", body);
+		return payload;
+	}
+
+	private static String clp(java.math.BigDecimal amount) {
+		java.text.DecimalFormatSymbols symbols = new java.text.DecimalFormatSymbols();
+		symbols.setGroupingSeparator('.');
+		java.text.DecimalFormat format = new java.text.DecimalFormat("#,##0", symbols);
+		return "$" + format.format(amount == null ? 0 : amount.setScale(0, java.math.RoundingMode.HALF_UP));
 	}
 
 	private Map<String, Object> emailPayload(OrderEvent event) {

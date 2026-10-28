@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pedidos360.notify.config.RabbitTopology;
 import com.pedidos360.notify.handler.CommandHandler;
 import com.pedidos360.notify.handler.EmailSender;
+import com.pedidos360.notify.handler.InAppNotifier;
 import com.pedidos360.notify.handler.InvoiceGenerator;
 import com.pedidos360.notify.handler.KitchenTicketPrinter;
 import com.rabbitmq.client.Channel;
@@ -15,7 +16,7 @@ import org.springframework.stereotype.Component;
 import java.io.IOException;
 
 /**
- * Consume las 3 colas de comandos con ACK/NACK explicito:
+ * Consume las 4 colas de comandos con ACK/NACK explicito:
  * OK -> basicAck; error -> basicNack(requeue=false) y RabbitMQ lo manda por cmd.dead.dlx a la DLQ de la cola.
  */
 @Slf4j
@@ -27,14 +28,16 @@ public class CommandConsumer {
 	private final EmailSender emailSender;
 	private final KitchenTicketPrinter kitchenTicketPrinter;
 	private final InvoiceGenerator invoiceGenerator;
+	private final InAppNotifier inAppNotifier;
 
 	public CommandConsumer(ObjectMapper objectMapper, ProcessedCommands processed, EmailSender emailSender,
-			KitchenTicketPrinter kitchenTicketPrinter, InvoiceGenerator invoiceGenerator) {
+			KitchenTicketPrinter kitchenTicketPrinter, InvoiceGenerator invoiceGenerator, InAppNotifier inAppNotifier) {
 		this.objectMapper = objectMapper;
 		this.processed = processed;
 		this.emailSender = emailSender;
 		this.kitchenTicketPrinter = kitchenTicketPrinter;
 		this.invoiceGenerator = invoiceGenerator;
+		this.inAppNotifier = inAppNotifier;
 	}
 
 	@RabbitListener(queues = RabbitTopology.Q_EMAIL, ackMode = "MANUAL")
@@ -50,6 +53,11 @@ public class CommandConsumer {
 	@RabbitListener(queues = RabbitTopology.Q_INVOICE, ackMode = "MANUAL")
 	public void onInvoice(Message message, Channel channel) throws IOException {
 		process(message, channel, invoiceGenerator);
+	}
+
+	@RabbitListener(queues = RabbitTopology.Q_INAPP, ackMode = "MANUAL")
+	public void onInApp(Message message, Channel channel) throws IOException {
+		process(message, channel, inAppNotifier);
 	}
 
 	void process(Message message, Channel channel, CommandHandler handler) throws IOException {

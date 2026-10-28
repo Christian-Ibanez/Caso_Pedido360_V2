@@ -17,4 +17,6 @@ public final class MessagingTopology {
 	public static final String RK_KITCHEN = "kitchen.ticket";
 	/** Via cmd.topic (patron invoice.#): boleta en PDF al entregar. */
 	public static final String RK_INVOICE_PDF = "invoice.gen.pdf";
+	/** Notificaciones dentro de la app (campana): ms-notify las guarda y el frontend las consulta via BFF. */
+	public static final String RK_INAPP = "notify.inapp";
 }

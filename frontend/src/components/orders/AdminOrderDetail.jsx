@@ -9,7 +9,7 @@ import { IconBack, IconChevron } from '../Icons';
 
 const EVENT_LABEL = {
   OrderCreated: 'Pedido creado',
-  OrderAccepted: 'Aceptado',
+  OrderAccepted: 'Confirmado',
   OrderPreparing: 'En preparación',
   OrderDispatched: 'Despachado',
   OrderDelivered: 'Entregado',
@@ -130,7 +130,7 @@ export default function AdminOrderDetail({ id, byId, onBack }) {
                     </button>
                   )}
                   {order.status === 'CREADO' && (
-                    <p className="subtle small" style={{ margin: 0 }}>Al aceptar se descuenta el stock y se envía el ticket a cocina. Si falta stock, el pedido sigue en Creado.</p>
+                    <p className="subtle small" style={{ margin: 0 }}>Al confirmar, el pedido pasa a en proceso: se descuenta el stock, se envía el ticket a cocina y el cliente recibe el aviso. Si falta stock, el pedido sigue pendiente.</p>
                   )}
                   {canCancel(order.status) && (
                     <button type="button" className="btn danger" disabled={saving} onClick={() => move('CANCELADO')}>Cancelar pedido</button>

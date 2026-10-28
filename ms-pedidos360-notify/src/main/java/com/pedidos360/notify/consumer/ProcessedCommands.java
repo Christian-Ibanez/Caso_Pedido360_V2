@@ -9,7 +9,8 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Idempotencia: recuerda los ultimos eventId procesados (el servicio no tiene DB, por eso en memoria).
+ * Idempotencia: recuerda los ultimos eventId procesados en memoria (las notificaciones de la campana ademas
+ * se guardan con eventId unico en la base).
  * Si RabbitMQ reentrega un comando ya procesado se hace ACK sin volver a enviar el correo.
  */
 @Component
