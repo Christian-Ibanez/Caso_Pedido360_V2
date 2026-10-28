@@ -7,6 +7,7 @@ import OrdersComponent from './components/OrdersComponent';
 import CatalogComponent from './components/CatalogComponent';
 import ReportsComponent from './components/ReportsComponent';
 import AuditComponent from './components/AuditComponent';
+import RabbitAdminComponent from './components/RabbitAdminComponent';
 import AuthCallbackComponent from './components/AuthCallbackComponent';
 
 function ProtectedRoute({ children }) {
@@ -69,6 +70,14 @@ export default function App() {
           element={
             <ProtectedRoute>
               <AuditComponent />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/rabbitmq" 
+          element={
+            <ProtectedRoute>
+              <RabbitAdminComponent />
             </ProtectedRoute>
           } 
         />

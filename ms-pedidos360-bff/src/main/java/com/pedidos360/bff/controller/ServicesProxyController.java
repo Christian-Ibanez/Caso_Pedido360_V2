@@ -35,19 +35,21 @@ public class ServicesProxyController {
 			@Value("${app.services.catalog-url}") String catalogUrl,
 			@Value("${app.services.report-url}") String reportUrl,
 			@Value("${app.services.audit-url}") String auditUrl,
-			@Value("${app.services.notify-url}") String notifyUrl) {
+			@Value("${app.services.notify-url}") String notifyUrl,
+			@Value("${app.services.mqadmin-url}") String mqadminUrl) {
 		this.client = servicesClient;
 		this.targets = Map.of(
 				"orders", ordersUrl,
 				"catalog", catalogUrl,
 				"report", reportUrl,
 				"audit", auditUrl,
-				"notifications", notifyUrl);
+				"notifications", notifyUrl,
+				"mq", mqadminUrl);
 	}
 
 	@RequestMapping(
 			path = { "/api/orders", "/api/orders/**", "/api/catalog", "/api/catalog/**", "/api/report", "/api/report/**", "/api/audit", "/api/audit/**",
-					"/api/notifications", "/api/notifications/**" },
+					"/api/notifications", "/api/notifications/**", "/api/mq/**" },
 			method = { RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.DELETE })
 	public ResponseEntity<byte[]> proxy(HttpServletRequest request, @RequestBody(required = false) byte[] body,
 			@AuthenticationPrincipal Jwt jwt) throws IOException {

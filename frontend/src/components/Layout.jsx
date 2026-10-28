@@ -6,7 +6,7 @@ import { api } from '../api/http';
 import { clearCart } from '../lib/cart';
 import { resetNotifications } from '../lib/notifications';
 import NotificationBell from './NotificationBell';
-import { IconBag, IconHome, IconTag, IconChart, IconShield, IconLogout } from './Icons';
+import { IconBag, IconHome, IconTag, IconChart, IconShield, IconLogout, IconQueue } from './Icons';
 
 // Cantidad de pedidos por confirmar (insignia del menú para Admin/Operador).
 let pendingCache = { value: null, at: 0 };
@@ -102,6 +102,11 @@ export default function Layout({ title, children }) {
             {isAdmin && (
               <NavLink to="/reports" className={navClass}>
                 <IconChart /> <span className="nav-label">Reportería</span>
+              </NavLink>
+            )}
+            {isAdmin && (
+              <NavLink to="/rabbitmq" className={navClass}>
+                <IconQueue /> <span className="nav-label">RabbitMQ</span>
               </NavLink>
             )}
             {(isAdmin || isAuditor) && (

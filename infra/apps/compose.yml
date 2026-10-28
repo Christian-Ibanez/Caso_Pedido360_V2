@@ -1,7 +1,7 @@
 # ec2-apps: microservicios + base de datos Oracle en la misma instancia.
 #   cp .env.example .env   (completar la IP privada de ec2-mq)
 #   docker compose up -d --build
-# Levanta: oracle, orders-svc, catalog-svc, notify-svc.
+# Levanta: oracle, orders-svc, catalog-svc, notify-svc, mqadmin-svc.
 # El BFF va en su propia instancia (infra/bff) y llega a orders/catalog/notify por la IP privada de esta instancia.
 # audit-svc y report-svc consumen Kafka: solo se levantan con el perfil "kafka" cuando exista ec2-kafka
 #   docker compose --profile kafka up -d --build   (y KAFKA_ENABLED=true + KAFKA_BOOTSTRAP_SERVERS en .env)
@@ -81,6 +81,22 @@ services:
       RABBITMQ_ADDRESSES: ${RABBITMQ_ADDRESSES}
       RABBITMQ_USER: ${RABBITMQ_USER:-pedidos360}
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-pedidos360}
+
+  # Administrador de RabbitMQ: API REST para crear y eliminar colas, exchanges y bindings (solo Admin, via BFF).
+  # No usa base de datos. Lista recursos con la API de Management de ec2-mq (SG p360-mq abre 15672-15673 a p360-apps)
+  mqadmin-svc:
+    build: ../../ms-pedidos360-mqadmin
+    image: pedidos360/ms-pedidos360-mqadmin
+    container_name: mqadmin-svc
+    restart: unless-stopped
+    ports:
+      - "8085:8085"
+    environment:
+      TZ: America/Santiago
+      RABBITMQ_ADDRESSES: ${RABBITMQ_ADDRESSES}
+      RABBITMQ_USER: ${RABBITMQ_USER:-pedidos360}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-pedidos360}
+      RABBITMQ_MANAGEMENT_URLS: ${RABBITMQ_MANAGEMENT_URLS}
 
   # --- Solo con ec2-kafka (perfil "kafka") ---
   audit-svc:

@@ -87,6 +87,7 @@ La interfaz cambia según el rol que entrega Entra ID en el token (`roles`):
 | **Pedidos** | Mis pedidos con detalle lateral (seguimiento, productos, notificaciones) y cancelación mientras está Pendiente | Gestión con botón del siguiente estado (Confirmar → Preparar → Despachar → Entregar), cancelación, acciones masivas, exportar CSV y detalle con registro de auditoría | – |
 | **Catálogo** | Tarjetas con foto, filtros por categoría, carrito con botones − / + y "Continuar" al nuevo pedido | (Admin) tabla con stock − / +, interruptor de activo, edición en panel lateral, alta y eliminación | Catálogo de solo lectura |
 | **Reportería** | – | (Admin) ventas, ticket promedio, ventas por hora, más vendidos, tiempo de entrega y pedidos activos | – |
+| **RabbitMQ** | – | (Admin) colas con sus contadores Ready/Unacked/Total, exchanges y bindings; crear y eliminar (los del sistema están protegidos) | – |
 | **Auditoría** | – | (Admin) eventos por tipo, usuario y pedido, con el evento original | Igual que Admin |
 
 ### Campana de notificaciones
@@ -113,7 +114,7 @@ Créditos: las fotos de PAS-002, PAS-003, PAS-004 y PAS-005 fueron aportadas por
 ## 📂 Estructura Principal del Proyecto
 
 - `src/auth/`: configuración de MSAL (`authConfig.js`) y lectura del token.
-- `src/api/`: cliente HTTP (`http.js`, agrega el token y corta a los 12 s) y llamadas a pedidos, catálogo, notificaciones, reportería y auditoría.
+- `src/api/`: cliente HTTP (`http.js`, agrega el token y corta a los 12 s) y llamadas a pedidos, catálogo, notificaciones, administrador de RabbitMQ (`mq.js`), reportería y auditoría.
 - `src/hooks/`: `useRoles` (roles del token) y `useData` (catálogo y pedidos).
 - `src/lib/`: formatos (CLP, fechas, estados), categorías/fotos del catálogo, el carrito y el sondeo de la campana (`notifications.js`).
 - `src/components/`: `Layout` (menú lateral), `NotificationBell` (campana y avisos), vistas por módulo y sus piezas (`home/`, `orders/`, `catalog/`).

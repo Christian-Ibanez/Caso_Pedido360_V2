@@ -22,6 +22,15 @@ spring:
         # Si RabbitMQ no esta disponible al partir, el micro sigue reintentando conectarse
         missing-queues-fatal: false
 
+app:
+  messaging:
+    # Errores recuperables (TransientProcessingException): intentos totales antes de mandar el mensaje a la DLQ,
+    # con espera exponencial entre ellos (500 ms, 1 s, ...). Los errores no recuperables van directo a la DLQ.
+    retry:
+      max-attempts: ${MESSAGING_RETRY_MAX_ATTEMPTS:3}
+      initial-backoff-ms: ${MESSAGING_RETRY_BACKOFF_MS:500}
+      multiplier: 2
+
 management:
   endpoints:
     web:

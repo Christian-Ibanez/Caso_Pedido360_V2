@@ -14,5 +14,6 @@ app:
     audit-url: http://localhost:8084
     report-url: http://localhost:8086
     notify-url: http://localhost:8083
+    mqadmin-url: http://localhost:8085
   cors:
     allowed-origins: http://localhost:5173

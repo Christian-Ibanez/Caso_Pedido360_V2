@@ -1,0 +1,34 @@
+server:
+  port: ${SERVER_PORT:8085}
+
+spring:
+  application:
+    name: ms-pedidos360-mqadmin
+  # Conexion AMQP (ec2-mq por IP privada): la usa AmqpAdmin para declarar y eliminar recursos
+  rabbitmq:
+    addresses: ${RABBITMQ_ADDRESSES:localhost:5672}
+    username: ${RABBITMQ_USER:pedidos360}
+    password: ${RABBITMQ_PASSWORD:pedidos360}
+    connection-timeout: 3s
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+app:
+  rabbit:
+    vhost: /
+    # API HTTP de RabbitMQ Management, para listar colas, exchanges y bindings (AMQP no permite listarlos).
+    # Varias URL separadas por coma (un nodo por URL): si uno no responde se prueba el siguiente.
+    management-urls: ${RABBITMQ_MANAGEMENT_URLS:http://localhost:15672}
+    # Topologia del sistema que la API no deja eliminar (orders y notify dependen de ella). Prefijos de nombre.
+    protected-queue-prefixes: q.cmd., q.notify., q.audit.
+    protected-exchange-prefixes: cmd., amq.

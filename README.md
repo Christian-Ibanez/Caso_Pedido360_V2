@@ -7,6 +7,7 @@
 | `ms-pedidos360-orders` | Pedidos y estados; coordina stock, publica en RabbitMQ (y en Kafka si `KAFKA_ENABLED=true`) | 8081 |
 | `ms-pedidos360-catalog` | Productos, precios y stock | 8082 |
 | `ms-pedidos360-notify` | Consumidor RabbitMQ: email/webpush, ticket de cocina, boleta, campana de notificaciones (`/api/notifications`) + DLQ | 8083 |
+| `ms-pedidos360-mqadmin` | Administrador de RabbitMQ: API REST para crear y eliminar colas, exchanges y bindings (solo Admin) | 8085 |
 | `ms-pedidos360-audit` | Consumidor Kafka: timeline de auditoría (solo lectura; no desplegado sin Kafka) | 8084 |
 | `ms-pedidos360-report` | Consumidor Kafka: KPIs (solo lectura; no desplegado sin Kafka) | 8086 |
 | `infra/apps`, `infra/mq`, `infra/bff` | Un `compose.yml` por instancia EC2: micros + Oracle, RabbitMQ, BFF | |

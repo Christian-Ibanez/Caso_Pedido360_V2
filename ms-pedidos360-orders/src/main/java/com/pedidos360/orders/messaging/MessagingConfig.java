@@ -24,6 +24,27 @@ import java.util.concurrent.Executor;
 @EnableScheduling
 public class MessagingConfig {
 
+	// ---- Nombres de la mensajeria, centralizados aqui (deben coincidir con infra/mq/definitions.json) ----
+
+	/** Topico Kafka de eventos de pedidos (solo si app.kafka.enabled=true). */
+	public static final String ORDERS_EVENTS_TOPIC = "orders.events";
+
+	/** Exchange de comandos con routing exacto. */
+	public static final String CMD_DIRECT = "cmd.direct";
+	/** Exchange de comandos por patron (email.#, kitchen.#, invoice.#, notify.#). */
+	public static final String CMD_TOPIC = "cmd.topic";
+
+	/** Correo/webpush al cliente en cada cambio de estado (cmd.direct -> q.cmd.email). */
+	public static final String RK_EMAIL = "email.send";
+	/** Correo prioritario, p. ej. cancelaciones (cmd.topic, patron email.# -> q.cmd.email). */
+	public static final String RK_EMAIL_HIGH = "email.send.high";
+	/** Ticket de cocina al confirmar el pedido (cmd.direct -> q.cmd.kitchen). */
+	public static final String RK_KITCHEN = "kitchen.ticket";
+	/** Boleta en PDF al entregar (cmd.topic, patron invoice.# -> q.cmd.invoice). */
+	public static final String RK_INVOICE_PDF = "invoice.gen.pdf";
+	/** Aviso en la campana de la app (cmd.direct -> q.notify.inapp). */
+	public static final String RK_INAPP = "notify.inapp";
+
 	/** Un solo hilo: los eventos de un pedido salen en el mismo orden en que ocurrieron. */
 	@Bean(name = "messagingExecutor")
 	Executor messagingExecutor() {
@@ -63,12 +84,12 @@ public class MessagingConfig {
 	@Bean
 	@ConditionalOnProperty(name = "app.messaging.enabled", havingValue = "true")
 	DirectExchange cmdDirect() {
-		return new DirectExchange(MessagingTopology.CMD_DIRECT, true, false);
+		return new DirectExchange(CMD_DIRECT, true, false);
 	}
 
 	@Bean
 	@ConditionalOnProperty(name = "app.messaging.enabled", havingValue = "true")
 	TopicExchange cmdTopic() {
-		return new TopicExchange(MessagingTopology.CMD_TOPIC, true, false);
+		return new TopicExchange(CMD_TOPIC, true, false);
 	}
 }

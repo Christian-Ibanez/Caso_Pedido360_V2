@@ -70,11 +70,12 @@ La IP pública cambia cada vez que la instancia se detiene; las privadas (las de
 | SG | Entrada | Origen |
 |---|---|---|
 | `p360-bff` | 8080 (BFF) | 0.0.0.0/0 (el navegador del usuario llama directo al BFF) |
-| `p360-apps` | 8081-8083 (orders, catalog, notify) | `p360-bff` |
+| `p360-apps` | 8081-8083, 8085 (orders, catalog, notify, mqadmin) | `p360-bff` |
 | `p360-apps` | 8081-8086 (Swagger/pruebas) | solo tu IP |
 | `p360-apps` | 1521 (Oracle, SQL Developer) | solo tu IP |
 | `p360-mq` | 5672-5673 (AMQP) | `p360-apps` |
 | `p360-mq` | 15672-15673 (UI) | solo tu IP |
+| `p360-mq` | 15672-15673 (API de Management) | `p360-apps` (mqadmin lista colas, exchanges y bindings) |
 | todos | 22 (SSH) | solo tu IP |
 
 (Los nombres de security group no pueden empezar con `sg-`, por eso el prefijo `p360-`.)
@@ -100,6 +101,7 @@ Si se quiere un HTTP API delante del BFF: authorizer JWT con issuer `https://log
 | catalog | 8082 | `POST /api/catalog/products`, `PUT /api/catalog/products/{id}` (precio/stock, parcial), `DELETE /api/catalog/products/{id}` | Admin |
 | catalog | 8082 | `POST /api/catalog/products/stock/decrease` y `/increase` | solo interno (orders); el BFF los bloquea |
 | notify | 8083 | `GET /api/notifications`, `POST /api/notifications/{id}/read`, `POST /api/notifications/read-all` (campana; el BFF agrega `X-User-Email` y `X-User-Roles` desde el JWT). Además consume RabbitMQ; `/actuator/health`, `/actuator/metrics/pedidos360.dlq.messages` | autenticado (cada usuario ve las suyas) |
+| mqadmin | 8085 | `GET/POST /api/mq/queues`, `GET/DELETE /api/mq/queues/{name}?ifEmpty=true`, `GET/POST /api/mq/exchanges`, `GET/DELETE /api/mq/exchanges/{name}`, `GET/POST /api/mq/bindings`, `DELETE /api/mq/bindings?exchange=&queue=&routingKey=` | Admin |
 | audit (requiere Kafka) | 8084 | `GET /api/audit/events?user=&type=&orderId=&from=&to=&limit=`, `GET /api/audit/events/{id}`, `GET /api/audit/orders/{orderId}/timeline`, `GET /api/audit/event-types`, `GET /api/audit/actors` | Admin, Auditor |
 | report (requiere Kafka) | 8086 | `GET /api/report/kpis?range=last24h`, `GET /api/report/top-products?range=last7d&limit=5`, `GET /api/report/sales-by-hour?range=`, `GET /api/report/lead-time?range=` | Admin |
 
@@ -127,10 +129,40 @@ La publicación ocurre después del commit y en un hilo aparte: si Kafka o Rabbi
 
 - En AMQP `*` es exactamente una palabra, así que `email.*` no recibe `email.send.high` (el ejemplo del enunciado); por eso se usa `#`.
 - Envelope común: `type, eventId, timestamp, traceId, correlationId, payload`.
-- notify hace ACK/NACK explícito; al fallar hace `basicNack(requeue=false)` y RabbitMQ lo manda por `cmd.dead.dlx` a la DLQ. notify escucha las 4 DLQ, registra cola de origen, motivo, cantidad y cuerpo, y suma la métrica `pedidos360.dlq.messages{queue}`.
+- Nombres centralizados: en orders, en la clase `@Configuration` `MessagingConfig`; en notify, en `RabbitTopology` (`@Configuration`), que además declara los beans `Queue`, `Exchange` y `Binding` de cada flujo.
+- Consumidores por dominio en notify (un `@RabbitListener` por clase): `email.EmailConsumer`, `kitchen.KitchenConsumer`, `invoice.InvoiceConsumer`, `inapp.InAppConsumer` y `messaging.DeadLetterConsumer`. Todos delegan la confirmación en `messaging.CommandProcessor`.
+- Confirmación manual (ACK/NACK) en `CommandProcessor`, con tres rutas:
+
+| Resultado | Qué hace | Ejemplo para la demo |
+|---|---|---|
+| OK (o `eventId` repetido) | `basicAck` | cualquier pedido |
+| Error recuperable (`TransientProcessingException`, error transitorio de BD) | Reintenta en el consumidor con espera exponencial (500 ms, 1 s) hasta `app.messaging.retry.max-attempts` (3). Si un intento funciona, `basicAck` | `customerEmail` que termine en `@retry.test`: falla 2 veces y funciona a la 3.ª |
+| Reintentos agotados | `basicNack(requeue=false)` → `cmd.dead.dlx` → DLQ | `@down.test` |
+| Error no recuperable (JSON inválido, `PermanentProcessingException`) | `basicNack(requeue=false)` sin reintentar → DLQ | `@fail.test` |
+
+  Nunca se usa `requeue=true`, para que un mensaje defectuoso no quede dando vueltas. notify escucha las 4 DLQ, registra cola de origen, motivo, cantidad y cuerpo, y suma la métrica `pedidos360.dlq.messages{queue}`.
 - Idempotencia: notify recuerda los `eventId` procesados y hace ACK sin reenviar los duplicados.
 - **Campana de notificaciones** (comando `InAppNotify` por `notify.inapp` -> `q.notify.inapp`): cuando un cliente crea un pedido, orders avisa a los administradores ("Nuevo pedido #N"); cuando el administrador lo confirma (CREADO -> ACEPTADO, en proceso) el cliente recibe "Tu pedido #N está en proceso", y luego un aviso por cada cambio de estado. notify las guarda en `P360_NOTIFICATIONS` (eventId único) y el frontend las consulta cada 10 s a través del BFF.
-- **Demo de DLQ**: crear un pedido con `customerEmail` que termine en `@fail.test`.
+- **Demo de DLQ**: crear un pedido con `customerEmail` que termine en `@fail.test` (directo a la DLQ), `@down.test` (3 intentos y DLQ) o `@retry.test` (se recupera al tercer intento).
+
+### Microservicio administrador (ms-pedidos360-mqadmin)
+
+API REST para crear y eliminar colas, exchanges y bindings (Swagger en `http://<IP_APPS>:8085/swagger-ui.html`). Por el BFF solo la usa el rol **Admin**, también desde la vista **RabbitMQ** del frontend.
+
+- `RabbitAdminService` concentra toda la lógica: crea y elimina con `AmqpAdmin` (AMQP) y lista con la API de Management (`RABBITMQ_MANAGEMENT_URLS`, un nodo por URL, prueba el siguiente si uno no responde). Los controladores solo llaman a sus métodos.
+- Validación con DTO (`QueueRequest`, `ExchangeRequest`, `BindingRequest`) y anotaciones: nombre obligatorio con letras, números, `.`, `-` y `_`, sin el prefijo reservado `amq.`; tipo de exchange `direct|topic|fanout|headers`; `deadLetterRoutingKey` exige `deadLetterExchange`; una cola durable no puede ser auto delete; TTL entre 0 y 7 días.
+- Reglas del servicio: no crea duplicados (**409**), exige que el exchange y la cola del binding existan (**404**), en `direct` no acepta comodines y en `topic` exige que `*` y `#` sean palabras completas (**400**), no elimina una cola con mensajes si `ifEmpty=true` (**409**).
+- La topología del sistema está protegida (**409** al intentar eliminarla): colas `q.cmd.*`, `q.notify.*`, `q.audit.*` y exchanges `cmd.*` / `amq.*` (configurable en `app.rabbit.protected-*`).
+- Errores en formato `ProblemDetail` (`title`, `detail` y `fields` por campo).
+
+```bash
+# Ejemplo (directo a ec2-apps desde tu IP; por el BFF se agrega el token de un Admin)
+curl -X POST http://<IP_APPS>:8085/api/mq/queues -H 'Content-Type: application/json' \
+  -d '{"name":"q.cmd.sms","deadLetterExchange":"cmd.dead.dlx","deadLetterRoutingKey":"sms.send"}'
+curl -X POST http://<IP_APPS>:8085/api/mq/bindings -H 'Content-Type: application/json' \
+  -d '{"exchange":"cmd.topic","queue":"q.cmd.sms","routingKey":"sms.#"}'
+curl -X DELETE 'http://<IP_APPS>:8085/api/mq/queues/q.cmd.sms?ifEmpty=false'
+```
 
 ### Registro de mensajes
 
