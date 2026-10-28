@@ -27,24 +27,24 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 // Preflight CORS del navegador
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                // Permitir cualquier usuario autenticado
-                .requestMatchers(HttpMethod.GET, "/api/data").authenticated()
-                .requestMatchers("/api/orders", "/api/orders/**").authenticated()
+                // Permitir cualquier usuario autenticado con el scope de la API
+                .requestMatchers(HttpMethod.GET, "/api/data").hasAuthority(SCOPE)
+                .requestMatchers("/api/orders", "/api/orders/**").hasAuthority(SCOPE)
                 // Catalogo: movimientos de stock solo los hace ms-orders por la red interna
                 .requestMatchers("/api/catalog/products/stock/**").denyAll()
                 // Catalogo: todos ven productos (el cliente los necesita para pedir); solo Admin los edita
-                .requestMatchers(HttpMethod.GET, "/api/catalog/**").authenticated()
-                .requestMatchers(HttpMethod.POST, "/api/catalog/**").hasRole(ADMIN)
-                .requestMatchers(HttpMethod.PUT, "/api/catalog/**").hasRole(ADMIN)
-                .requestMatchers(HttpMethod.DELETE, "/api/catalog/**").hasRole(ADMIN)
+                .requestMatchers(HttpMethod.GET, "/api/catalog", "/api/catalog/**").authenticated()
+                .requestMatchers(HttpMethod.POST, "/api/catalog", "/api/catalog/**").hasRole(ADMIN)
+                .requestMatchers(HttpMethod.PUT, "/api/catalog", "/api/catalog/**").hasRole(ADMIN)
+                .requestMatchers(HttpMethod.DELETE, "/api/catalog", "/api/catalog/**").hasRole(ADMIN)
                 // Reporteria: solo Admin, solo lectura
-                .requestMatchers(HttpMethod.GET, "/api/report/**").hasRole(ADMIN)
+                .requestMatchers(HttpMethod.GET, "/api/report", "/api/report/**").hasRole(ADMIN)
                 // Auditoria: Admin o Auditor, solo lectura
-                .requestMatchers(HttpMethod.GET, "/api/audit/**").hasAnyRole(ADMIN, AUDITOR)
+                .requestMatchers(HttpMethod.GET, "/api/audit", "/api/audit/**").hasAnyRole(ADMIN, AUDITOR)
                 // Todo lo demás se rechaza
                 .anyRequest().denyAll()
             )
-            // CAMBIO: En lugar de Customizer.withDefaults(), usamos nuestro convertidor de roles
+            // En lugar de Customizer.withDefaults(), usamos nuestro convertidor que incluye roles y scopes
             .oauth2ResourceServer(oauth2 -> oauth2
                 .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))
             );
@@ -52,14 +52,24 @@ public class SecurityConfig {
         return http.build();
     }
 
-    // MÉTODO NUEVO: Mapea la propiedad "roles" del JWT a GrantedAuthorities de Spring Security
+    // Mapea tanto "scp/scope" a SCOPE_ como "roles" a ROLE_
     private JwtAuthenticationConverter jwtAuthenticationConverter() {
-        JwtGrantedAuthoritiesConverter authoritiesConverter = new JwtGrantedAuthoritiesConverter();
-        authoritiesConverter.setAuthoritiesClaimName("roles");
-        authoritiesConverter.setAuthorityPrefix("ROLE_");
+        JwtGrantedAuthoritiesConverter defaultScopesConverter = new JwtGrantedAuthoritiesConverter();
+        JwtGrantedAuthoritiesConverter rolesConverter = new JwtGrantedAuthoritiesConverter();
+        authoritiesConverterRoleConfig(rolesConverter);
 
         JwtAuthenticationConverter jwtConverter = new JwtAuthenticationConverter();
-        jwtConverter.setJwtGrantedAuthoritiesConverter(authoritiesConverter);
+        jwtConverter.setJwtGrantedAuthoritiesConverter(jwt -> {
+            java.util.Collection<org.springframework.security.core.GrantedAuthority> authorities =
+                    new java.util.ArrayList<>(defaultScopesConverter.convert(jwt));
+            authorities.addAll(rolesConverter.convert(jwt));
+            return authorities;
+        });
         return jwtConverter;
+    }
+
+    private void authoritiesConverterRoleConfig(JwtGrantedAuthoritiesConverter converter) {
+        converter.setAuthoritiesClaimName("roles");
+        converter.setAuthorityPrefix("ROLE_");
     }
 }

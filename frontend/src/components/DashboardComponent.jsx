@@ -3,6 +3,7 @@ import Layout from './Layout';
 import { api } from '../api/http';
 import { useState, useEffect } from 'react';
 import OrderStatusBadgeComponent from './OrderStatusBadgeComponent';
+import { getAccessToken, decodeClaims } from '../auth/token';
 
 export default function DashboardComponent() {
   const { instance, accounts } = useMsal();
@@ -12,9 +13,7 @@ export default function DashboardComponent() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Para simplificar, importamos getAccessToken y decodeClaims aquí mismo o asumimos los roles ya extraídos
-    // como esto es un componente sencillo, extraeremos los roles del access token
-    import('../auth/token').then(async ({ getAccessToken, decodeClaims }) => {
+    const init = async () => {
       try {
         const token = await getAccessToken(instance, account);
         if (token) {
@@ -36,32 +35,88 @@ export default function DashboardComponent() {
       } finally {
         setLoading(false);
       }
-    });
+    };
+    init();
   }, [instance, account]);
 
   const isAdmin = roles.includes('Admin');
+  const isAuditor = roles.includes('Auditor');
   const isOperator = roles.includes('Operator');
-  const isCustomer = roles.includes('Customer') || (!isAdmin && !isOperator);
+  const isCustomer = roles.includes('Customer') || (!isAdmin && !isOperator && !isAuditor);
 
   // Filtrar los pedidos para el customer
   const userEmail = account?.username || account?.idTokenClaims?.preferred_username;
   const myOrders = orders.filter(o => o.customerEmail?.toLowerCase() === userEmail?.toLowerCase());
 
+  const formatPrice = (amount) => {
+    return `$${Number(amount || 0).toLocaleString('es-CL')}`;
+  };
+
   return (
-    <Layout title="Dashboard">
-      <div className="section">
-        <h2>Resumen de Actividad</h2>
-        
-        {isAdmin && (
-          <div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.5rem', marginTop: '1.5rem' }}>
-              <div style={{ padding: '1.5rem', backgroundColor: '#fff', borderRadius: '10px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', display: 'flex', alignItems: 'center' }}>
-                <div style={{ flex: 1 }}>
-                  <h4 style={{ margin: 0, color: '#6b7280', fontSize: '0.85rem', textTransform: 'uppercase' }}>Ventas Totales</h4>
-                  <p style={{ fontSize: '2rem', margin: '0.25rem 0 0', fontWeight: 'bold', color: '#111827' }}>
-                    ${orders.reduce((sum, o) => sum + (o.total || 0), 0).toFixed(2)}
-                  </p>
-                </div>
+    <Layout title="Dashboard Pedidos360">
+      <div>
+        {/* Hub de Navegación por Microservicios */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+          
+          <div style={{ backgroundColor: '#fff', padding: '1.25rem', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '1.5rem' }}>🛍️</span>
+              <span style={{ fontSize: '0.75rem', fontWeight: 'bold', padding: '0.2rem 0.5rem', backgroundColor: '#e0f2fe', color: '#0369a1', borderRadius: '4px' }}>Puerto 8081</span>
+            </div>
+            <h4 style={{ margin: '0.75rem 0 0.25rem', color: '#0f172a' }}>Gestión de Pedidos</h4>
+            <p style={{ margin: '0 0 0.75rem', fontSize: '0.8rem', color: '#64748b' }}>ms-pedidos360-orders + RabbitMQ notify</p>
+            <a href="/orders" style={{ fontSize: '0.85rem', fontWeight: '600', color: '#2563eb', textDecoration: 'none' }}>Ver Pedidos &rarr;</a>
+          </div>
+
+          <div style={{ backgroundColor: '#fff', padding: '1.25rem', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '1.5rem' }}>🏷️</span>
+              <span style={{ fontSize: '0.75rem', fontWeight: 'bold', padding: '0.2rem 0.5rem', backgroundColor: '#dcfce7', color: '#15803d', borderRadius: '4px' }}>Puerto 8082</span>
+            </div>
+            <h4 style={{ margin: '0.75rem 0 0.25rem', color: '#0f172a' }}>Catálogo e Inventario</h4>
+            <p style={{ margin: '0 0 0.75rem', fontSize: '0.8rem', color: '#64748b' }}>ms-pedidos360-catalog (Productos y stock)</p>
+            <a href="/catalog" style={{ fontSize: '0.85rem', fontWeight: '600', color: '#2563eb', textDecoration: 'none' }}>Explorar Catálogo &rarr;</a>
+          </div>
+
+          {isAdmin && (
+            <div style={{ backgroundColor: '#fff', padding: '1.25rem', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '1.5rem' }}>📈</span>
+                <span style={{ fontSize: '0.75rem', fontWeight: 'bold', padding: '0.2rem 0.5rem', backgroundColor: '#fef3c7', color: '#b45309', borderRadius: '4px' }}>Puerto 8086</span>
+              </div>
+              <h4 style={{ margin: '0.75rem 0 0.25rem', color: '#0f172a' }}>Reportería & KPIs</h4>
+              <p style={{ margin: '0 0 0.75rem', fontSize: '0.8rem', color: '#64748b' }}>ms-pedidos360-report (Consumidor Kafka)</p>
+              <a href="/reports" style={{ fontSize: '0.85rem', fontWeight: '600', color: '#2563eb', textDecoration: 'none' }}>Ver Reportes &rarr;</a>
+            </div>
+          )}
+
+          {(isAdmin || isAuditor) && (
+            <div style={{ backgroundColor: '#fff', padding: '1.25rem', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '1.5rem' }}>🛡️</span>
+                <span style={{ fontSize: '0.75rem', fontWeight: 'bold', padding: '0.2rem 0.5rem', backgroundColor: '#f3e8ff', color: '#6b21a8', borderRadius: '4px' }}>Puerto 8084</span>
+              </div>
+              <h4 style={{ margin: '0.75rem 0 0.25rem', color: '#0f172a' }}>Auditoría & Trazabilidad</h4>
+              <p style={{ margin: '0 0 0.75rem', fontSize: '0.8rem', color: '#64748b' }}>ms-pedidos360-audit (Consumidor Kafka)</p>
+              <a href="/audit" style={{ fontSize: '0.85rem', fontWeight: '600', color: '#2563eb', textDecoration: 'none' }}>Ver Bitácora &rarr;</a>
+            </div>
+          )}
+
+        </div>
+
+        <div className="section">
+          <h2>Resumen de Operación</h2>
+          
+          {isAdmin && (
+            <div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.5rem', marginTop: '1.5rem' }}>
+                <div style={{ padding: '1.5rem', backgroundColor: '#fff', borderRadius: '10px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', display: 'flex', alignItems: 'center' }}>
+                  <div style={{ flex: 1 }}>
+                    <h4 style={{ margin: 0, color: '#6b7280', fontSize: '0.85rem', textTransform: 'uppercase' }}>Ventas Totales</h4>
+                    <p style={{ fontSize: '2rem', margin: '0.25rem 0 0', fontWeight: 'bold', color: '#111827' }}>
+                      {formatPrice(orders.reduce((sum, o) => sum + (o.total || 0), 0))}
+                    </p>
+                  </div>
                 <div style={{ backgroundColor: '#ecfdf5', padding: '0.75rem', borderRadius: '50%', color: '#10b981' }}>
                   <svg width="28" height="28" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                 </div>
@@ -275,6 +330,7 @@ export default function DashboardComponent() {
             </div>
           </div>
         )}
+      </div>
       </div>
     </Layout>
   );

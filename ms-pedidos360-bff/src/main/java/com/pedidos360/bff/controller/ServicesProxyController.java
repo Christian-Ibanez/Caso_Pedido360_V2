@@ -44,7 +44,7 @@ public class ServicesProxyController {
 	}
 
 	@RequestMapping(
-			path = { "/api/orders", "/api/orders/**", "/api/catalog/**", "/api/report/**", "/api/audit/**" },
+			path = { "/api/orders", "/api/orders/**", "/api/catalog", "/api/catalog/**", "/api/report", "/api/report/**", "/api/audit", "/api/audit/**" },
 			method = { RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.DELETE })
 	public ResponseEntity<byte[]> proxy(HttpServletRequest request, @RequestBody(required = false) byte[] body,
 			@AuthenticationPrincipal Jwt jwt) throws IOException {
@@ -79,12 +79,18 @@ public class ServicesProxyController {
 			spec.body(body);
 		}
 
-		return spec.exchange((req, res) -> {
-			HttpHeaders headers = new HttpHeaders();
-			Optional.ofNullable(res.getHeaders().getContentType()).ifPresent(headers::setContentType);
-			return ResponseEntity.status(res.getStatusCode())
-					.headers(headers)
-					.body(res.getBody().readAllBytes());
-		}, false);
+		try {
+			return spec.exchange((req, res) -> {
+				HttpHeaders headers = new HttpHeaders();
+				Optional.ofNullable(res.getHeaders().getContentType()).ifPresent(headers::setContentType);
+				return ResponseEntity.status(res.getStatusCode())
+						.headers(headers)
+						.body(res.getBody().readAllBytes());
+			}, false);
+		} catch (org.springframework.web.client.RestClientException ex) {
+			return ResponseEntity.status(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE)
+					.contentType(MediaType.APPLICATION_JSON)
+					.body(("{\"detail\":\"El microservicio " + service + " no está disponible o no responde.\"}").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+		}
 	}
 }

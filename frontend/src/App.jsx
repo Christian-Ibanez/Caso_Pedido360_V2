@@ -4,13 +4,16 @@ import { InteractionStatus } from '@azure/msal-browser';
 import LoginComponent from './components/LoginComponent';
 import DashboardComponent from './components/DashboardComponent';
 import OrdersComponent from './components/OrdersComponent';
+import CatalogComponent from './components/CatalogComponent';
+import ReportsComponent from './components/ReportsComponent';
+import AuditComponent from './components/AuditComponent';
 import AuthCallbackComponent from './components/AuthCallbackComponent';
 
 function ProtectedRoute({ children }) {
   const { accounts, inProgress } = useMsal();
   
   if (inProgress !== InteractionStatus.None) {
-    return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>Cargando...</div>;
+    return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', fontSize: '1.1rem', color: '#64748b' }}>Cargando sesión...</div>;
   }
   
   if (accounts.length === 0) {
@@ -25,10 +28,8 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<LoginComponent />} />
         
-        {/* We use the root '/' as the auth callback to match Azure AD config. */}
+        {/* Callback para Entra ID */}
         <Route path="/" element={<AuthCallbackComponent />} />
-        
-        {/* This was the previous callback, leaving it just in case. */}
         <Route path="/auth/callback" element={<AuthCallbackComponent />} />
         
         <Route 
@@ -44,6 +45,30 @@ export default function App() {
           element={
             <ProtectedRoute>
               <OrdersComponent />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/catalog" 
+          element={
+            <ProtectedRoute>
+              <CatalogComponent />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/reports" 
+          element={
+            <ProtectedRoute>
+              <ReportsComponent />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/audit" 
+          element={
+            <ProtectedRoute>
+              <AuditComponent />
             </ProtectedRoute>
           } 
         />

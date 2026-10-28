@@ -2,14 +2,17 @@ import { useState, useEffect } from 'react';
 import { useMsal } from '@azure/msal-react';
 import OrderStatusBadgeComponent from './OrderStatusBadgeComponent';
 import { api } from '../api/http';
+import { getCatalogProducts } from '../api/catalog';
 import { REGIONES_CHILE } from '../data/chile';
 
-const BAKERY_PRODUCTS = [
-  { id: 1, name: 'Croissant', price: 2.50 },
-  { id: 2, name: 'Pan de Bono', price: 1.00 },
-  { id: 3, name: 'Café Americano', price: 1.50 },
-  { id: 4, name: 'Capuchino', price: 2.00 },
-  { id: 5, name: 'Torta de Chocolate', price: 3.50 }
+const FALLBACK_PRODUCTS = [
+  { id: 1, sku: 'PAN-001', name: 'Marraqueta (kg)', category: 'Panaderia', price: 1990, stock: 100 },
+  { id: 2, sku: 'PAN-002', name: 'Hallulla (kg)', category: 'Panaderia', price: 1990, stock: 100 },
+  { id: 3, sku: 'PAS-001', name: 'Kuchen de manzana', category: 'Pasteleria', price: 7500, stock: 20 },
+  { id: 4, sku: 'PAS-002', name: 'Torta tres leches', category: 'Pasteleria', price: 15900, stock: 10 },
+  { id: 5, sku: 'CAF-001', name: 'Cafe americano', category: 'Cafeteria', price: 1800, stock: 200 },
+  { id: 6, sku: 'CAF-002', name: 'Cappuccino', category: 'Cafeteria', price: 2500, stock: 200 },
+  { id: 7, sku: 'SAN-001', name: 'Sandwich ave palta', category: 'Cafeteria', price: 3900, stock: 40 }
 ];
 
 export default function OrderListComponent({ orders, loading, onSelectOrder, onRefresh, isAdmin, isOperator, isCustomer }) {
@@ -21,6 +24,7 @@ export default function OrderListComponent({ orders, loading, onSelectOrder, onR
   const [selectedRows, setSelectedRows] = useState([]);
   const [creating, setCreating] = useState(false);
   const [creationError, setCreationError] = useState('');
+  const [catalogProducts, setCatalogProducts] = useState(FALLBACK_PRODUCTS);
   
   // New order state
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -31,6 +35,18 @@ export default function OrderListComponent({ orders, loading, onSelectOrder, onR
   const [calle, setCalle] = useState('');
   const [notes, setNotes] = useState('');
   const [selectedItems, setSelectedItems] = useState([]); // { product, quantity }
+
+  useEffect(() => {
+    getCatalogProducts({ onlyActive: true })
+      .then(prods => {
+        if (Array.isArray(prods) && prods.length > 0) {
+          setCatalogProducts(prods);
+        }
+      })
+      .catch(err => {
+        console.warn('Usando catálogo fallback:', err);
+      });
+  }, []);
 
   const comunasDisponibles = REGIONES_CHILE.find(r => r.region === selectedRegion)?.comunas || [];
 
@@ -54,12 +70,16 @@ export default function OrderListComponent({ orders, loading, onSelectOrder, onR
 
   const handleAddItem = (productId) => {
     if (!productId) return;
-    const product = BAKERY_PRODUCTS.find(p => p.id === parseInt(productId));
+    const product = catalogProducts.find(p => p.id === parseInt(productId));
     if (!product) return;
 
     setSelectedItems(prev => {
       const existing = prev.find(item => item.product.id === product.id);
       if (existing) {
+        if (product.stock !== undefined && existing.quantity >= product.stock) {
+          alert(`No hay suficiente stock disponible para ${product.name} (Stock: ${product.stock})`);
+          return prev;
+        }
         return prev.map(item => item.product.id === product.id ? { ...item, quantity: item.quantity + 1 } : item);
       }
       return [...prev, { product, quantity: 1 }];
@@ -319,25 +339,31 @@ export default function OrderListComponent({ orders, loading, onSelectOrder, onR
           <div style={{ marginBottom: '1.5rem', padding: '1rem', backgroundColor: '#f9fafb', borderRadius: '6px', border: '1px solid #e5e7eb' }}>
             <h4 style={{ marginTop: 0 }}>Productos</h4>
             <select onChange={(e) => { handleAddItem(e.target.value); e.target.value = ''; }} style={{ padding: '0.5rem', marginBottom: '1rem', width: '100%', border: '1px solid #d1d5db', borderRadius: '4px' }}>
-              <option value="">-- Seleccionar producto para agregar --</option>
-              {BAKERY_PRODUCTS.map(p => (
-                <option key={p.id} value={p.id}>{p.name} - ${p.price.toFixed(2)}</option>
+              <option value="">-- Seleccionar producto del catálogo para agregar --</option>
+              {catalogProducts.map(p => (
+                <option key={p.id} value={p.id} disabled={p.stock <= 0}>
+                  {p.sku ? `[${p.sku}] ` : ''}{p.name} - ${Number(p.price || 0).toLocaleString('es-CL')} (Stock: {p.stock ?? 'N/A'})
+                </option>
               ))}
             </select>
 
             {selectedItems.length > 0 && (
               <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
                 {selectedItems.map(item => (
-                  <li key={item.product.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.75rem', backgroundColor: '#fff', border: '1px solid #e5e7eb', marginBottom: '0.5rem', borderRadius: '4px' }}>
-                    <span><span style={{ fontWeight: 'bold', color: '#374151', marginRight: '0.5rem' }}>{item.quantity}x</span> {item.product.name}</span>
+                  <li key={item.product.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem', backgroundColor: '#fff', border: '1px solid #e5e7eb', marginBottom: '0.5rem', borderRadius: '4px' }}>
+                    <div>
+                      <span style={{ fontWeight: 'bold', color: '#374151', marginRight: '0.5rem' }}>{item.quantity}x</span>
+                      <span>{item.product.name}</span>
+                      {item.product.sku && <span style={{ fontSize: '0.75rem', color: '#6b7280', marginLeft: '0.4rem' }}>({item.product.sku})</span>}
+                    </div>
                     <span>
-                      ${(item.quantity * item.product.price).toFixed(2)}
+                      ${(item.quantity * Number(item.product.price || 0)).toLocaleString('es-CL')}
                       <button type="button" onClick={() => handleRemoveItem(item.product.id)} style={{ marginLeft: '1rem', color: '#ef4444', border: 'none', background: 'none', cursor: 'pointer', fontWeight: 'bold' }}>✕</button>
                     </span>
                   </li>
                 ))}
                 <li style={{ textAlign: 'right', fontWeight: 'bold', padding: '1rem 0.5rem 0', fontSize: '1.1rem', color: '#111827' }}>
-                  Total: ${selectedItems.reduce((acc, item) => acc + (item.quantity * item.product.price), 0).toFixed(2)}
+                  Total: ${selectedItems.reduce((acc, item) => acc + (item.quantity * Number(item.product.price || 0)), 0).toLocaleString('es-CL')}
                 </li>
               </ul>
             )}
