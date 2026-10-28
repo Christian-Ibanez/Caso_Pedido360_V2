@@ -125,6 +125,22 @@ La publicación ocurre después del commit y en un hilo aparte: si Kafka o Rabbi
 | cmd.direct + cmd.topic | | q.audit.history | las 4 routing keys + `#` |
 | cmd.dead.dlx | direct | q.audit.errors | las 4 routing keys |
 
+Dead-lettering con políticas (*Admin → Policies*), como en la guía de la Parte 1. Cada patrón calza solo con la cola principal, no con su `.dlq`:
+
+| Política | Patrón | dead-letter-exchange | dead-letter-routing-key |
+|---|---|---|---|
+| policy.email.dlx | `^q\.cmd\.email$` | cmd.dead.dlx | email.send |
+| policy.kitchen.dlx | `^q\.cmd\.kitchen$` | cmd.dead.dlx | kitchen.ticket |
+| policy.invoice.dlx | `^q\.cmd\.invoice$` | cmd.dead.dlx | invoice.gen |
+| policy.notify.dlx | `^q\.notify\.inapp$` | cmd.dead.dlx | notify.inapp |
+
+Las colas también declaran esos mismos argumentos `x-dead-letter-*` (ms-notify las crea si el broker está vacío); como coinciden con la política, el resultado es el mismo. Para cargar las políticas en un broker que ya está corriendo:
+
+```bash
+docker cp definitions.json rabbitmq1:/tmp/definitions.json
+docker exec rabbitmq1 rabbitmqctl import_definitions /tmp/definitions.json
+```
+
 - En AMQP `*` es exactamente una palabra, así que `email.*` no recibe `email.send.high` (el ejemplo del enunciado); por eso se usa `#`.
 - Envelope común: `type, eventId, timestamp, traceId, correlationId, payload`.
 - notify hace ACK/NACK explícito; al fallar hace `basicNack(requeue=false)` y RabbitMQ lo manda por `cmd.dead.dlx` a la DLQ. notify escucha las 4 DLQ, registra cola de origen, motivo, cantidad y cuerpo, y suma la métrica `pedidos360.dlq.messages{queue}`.

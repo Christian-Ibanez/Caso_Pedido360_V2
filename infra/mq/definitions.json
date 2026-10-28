@@ -24,6 +24,52 @@
       "read": ".*"
     }
   ],
+  "policies": [
+    {
+      "vhost": "/",
+      "name": "policy.email.dlx",
+      "pattern": "^q\\.cmd\\.email$",
+      "apply-to": "queues",
+      "priority": 0,
+      "definition": {
+        "dead-letter-exchange": "cmd.dead.dlx",
+        "dead-letter-routing-key": "email.send"
+      }
+    },
+    {
+      "vhost": "/",
+      "name": "policy.kitchen.dlx",
+      "pattern": "^q\\.cmd\\.kitchen$",
+      "apply-to": "queues",
+      "priority": 0,
+      "definition": {
+        "dead-letter-exchange": "cmd.dead.dlx",
+        "dead-letter-routing-key": "kitchen.ticket"
+      }
+    },
+    {
+      "vhost": "/",
+      "name": "policy.invoice.dlx",
+      "pattern": "^q\\.cmd\\.invoice$",
+      "apply-to": "queues",
+      "priority": 0,
+      "definition": {
+        "dead-letter-exchange": "cmd.dead.dlx",
+        "dead-letter-routing-key": "invoice.gen"
+      }
+    },
+    {
+      "vhost": "/",
+      "name": "policy.notify.dlx",
+      "pattern": "^q\\.notify\\.inapp$",
+      "apply-to": "queues",
+      "priority": 0,
+      "definition": {
+        "dead-letter-exchange": "cmd.dead.dlx",
+        "dead-letter-routing-key": "notify.inapp"
+      }
+    }
+  ],
   "queues": [
     {
       "name": "q.cmd.email",
