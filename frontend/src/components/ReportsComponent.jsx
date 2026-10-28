@@ -1,347 +1,203 @@
-import { useState, useEffect } from 'react';
-import { useMsal } from '@azure/msal-react';
+import { useCallback, useEffect, useState } from 'react';
 import Layout from './Layout';
+import { useRoles } from '../hooks/useRoles';
+import { useCatalog } from '../hooks/useData';
 import { getKpis, getTopProducts } from '../api/reports';
-import { getCatalogProducts } from '../api/catalog';
-import { getAccessToken, decodeClaims } from '../auth/token';
+import { clp, clpShort, fmtTime, toDate, STATUS_LABEL } from '../lib/format';
+import { ProductThumb, ServiceUnavailable, Alert, PageHead } from './ui';
+
+const RANGES = [
+  { id: 'last24h', label: 'Últimas 24 h' },
+  { id: 'last7d', label: 'Últimos 7 días' },
+  { id: 'last30d', label: 'Últimos 30 días' },
+];
+
+const ACTIVE_ORDER = ['CREADO', 'ACEPTADO', 'EN_PREPARACION', 'DESPACHADO'];
+
+function minutes(v) {
+  return v == null ? '—' : `${Math.round(Number(v))} min`;
+}
 
 export default function ReportsComponent() {
-  const { instance, accounts } = useMsal();
-  const account = accounts[0];
-  const [roles, setRoles] = useState(account?.idTokenClaims?.roles || []);
-  const isAdmin = roles.includes('Admin');
-
+  const { isAdmin, resolved } = useRoles();
+  const { byId } = useCatalog();
   const [range, setRange] = useState('last24h');
   const [kpis, setKpis] = useState(null);
-  const [topProducts, setTopProducts] = useState([]);
-  const [catalogMap, setCatalogMap] = useState({});
+  const [top, setTop] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [failure, setFailure] = useState(null);
 
-  useEffect(() => {
-    const fetchRoles = async () => {
-      if (!account) return;
-      try {
-        const token = await getAccessToken(instance, account);
-        if (token) {
-          const claims = decodeClaims(token);
-          if (claims.roles) setRoles(claims.roles);
-        }
-      } catch (err) {
-        console.error('Error obteniendo roles en ReportsComponent:', err);
-      }
-    };
-    fetchRoles();
-  }, [instance, account]);
-
-  // Cargar catálogo para mapear nombres de productos
-  useEffect(() => {
-    getCatalogProducts()
-      .then(prods => {
-        if (Array.isArray(prods)) {
-          const map = {};
-          prods.forEach(p => { map[p.id] = p; });
-          setCatalogMap(map);
-        }
-      })
-      .catch(() => {});
-  }, []);
-
-  const loadReportData = async () => {
-    if (!isAdmin) return;
+  const load = useCallback(async () => {
     setLoading(true);
-    setError('');
+    setFailure(null);
     try {
-      const [kpiData, topProds] = await Promise.all([
-        getKpis(range).catch(err => { throw err; }),
-        getTopProducts(range, 5).catch(() => [])
-      ]);
-      setKpis(kpiData);
-      setTopProducts(Array.isArray(topProds) ? topProds : []);
+      const [k, t] = await Promise.all([getKpis(range), getTopProducts(range, 5).catch(() => [])]);
+      setKpis(k);
+      setTop(Array.isArray(t) ? t : []);
     } catch (err) {
-      setError(err.message || 'No se pudo conectar al microservicio ms-pedidos360-report.');
+      setFailure(err);
       setKpis(null);
     } finally {
       setLoading(false);
     }
-  };
+  }, [range]);
 
   useEffect(() => {
-    if (isAdmin) {
-      loadReportData();
-    } else {
-      setLoading(false);
-    }
-  }, [range, isAdmin]);
+    if (resolved && isAdmin) load();
+  }, [resolved, isAdmin, load]);
 
-  const formatMoney = (amount) => {
-    const num = Number(amount) || 0;
-    return `$${num.toLocaleString('es-CL')}`;
-  };
-
-  if (!isAdmin) {
+  if (resolved && !isAdmin) {
     return (
-      <Layout title="Reportería y Métricas">
-        <div style={{ backgroundColor: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', padding: '2rem', textAlign: 'center', color: '#92400e' }}>
-          <h3 style={{ margin: '0 0 0.5rem', color: '#78350f' }}>Acceso Restringido</h3>
-          <p style={{ margin: 0 }}>
-            El módulo de Reportería y KPIs ejecutivos está reservado para usuarios con rol <strong>Administrador (Admin)</strong>.
-          </p>
-        </div>
+      <Layout title="Reportería">
+        <ServiceUnavailable title="Acceso restringido">La reportería está reservada para usuarios con rol Administrador.</ServiceUnavailable>
       </Layout>
     );
   }
 
+  const hours = (kpis?.salesByHour || []).map((h) => {
+    const d = toDate(h.hour);
+    const hr = d ? d.getHours() : 0;
+    return { label: `${hr}h`, range: `${String(hr).padStart(2, '0')}:00 – ${String((hr + 1) % 24).padStart(2, '0')}:00`, full: fmtTime(h.hour), sales: Number(h.sales) || 0, orders: h.orders };
+  });
+  const maxHour = Math.max(...hours.map((h) => h.sales), 1);
+  const peak = hours.reduce((best, h) => (h.sales > (best?.sales ?? -1) ? h : best), null);
+  const topMax = Math.max(...top.map((t) => Number(t.sales) || 0), 1);
+  const lead = kpis?.leadTime || {};
+  const scaleMax = Math.max(Number(lead.maxMinutes) || 0, 60) * 1.1;
+  const active = kpis?.activeByStatus || {};
+  const activeTotal = ACTIVE_ORDER.reduce((s, k) => s + (Number(active[k]) || 0), 0);
+  const forbidden = failure?.status === 403;
+
   return (
-    <Layout title="Reportería y Métricas (ms-pedidos360-report)">
-      <div>
-        {/* Banner informativo del Microservicio */}
-        <div style={{ backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '1rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
-          <div>
-            <span style={{ fontWeight: 'bold', color: '#166534', fontSize: '1rem' }}>
-              Microservicio: <code style={{ backgroundColor: '#dcfce7', color: '#14532d' }}>ms-pedidos360-report</code> (Puerto 8086)
-            </span>
-            <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: '#15803d' }}>
-              Consumidor analítico en Kafka (tópico <code>orders.events</code>). Proyecta KPIs de negocio, volumen de ventas y tiempos de entrega sin bloquear la base transaccional.
-            </p>
-          </div>
-
-          {/* Selector de Rango */}
-          <div style={{ display: 'flex', gap: '0.4rem', backgroundColor: '#e2e8f0', padding: '0.25rem', borderRadius: '8px' }}>
-            {[
-              { id: 'last24h', label: 'Últimas 24h' },
-              { id: 'last7d', label: 'Últimos 7 días' },
-              { id: 'last30d', label: 'Últimos 30 días' }
-            ].map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setRange(tab.id)}
-                style={{
-                  padding: '0.4rem 0.9rem',
-                  border: 'none',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  fontWeight: '600',
-                  fontSize: '0.85rem',
-                  backgroundColor: range === tab.id ? '#fff' : 'transparent',
-                  color: range === tab.id ? '#111827' : '#64748b',
-                  boxShadow: range === tab.id ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                  transition: 'all 0.15s'
-                }}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
+    <Layout title="Reportería">
+      <PageHead title="Reportería" subtitle="Ventas, productos y tiempos de entrega.">
+        <div className="tabs" role="tablist" aria-label="Rango de tiempo">
+          {RANGES.map((r) => (
+            <button key={r.id} type="button" role="tab" aria-selected={range === r.id} className={`tab ${range === r.id ? 'active' : ''}`} onClick={() => setRange(r.id)} disabled={Boolean(failure)}>
+              {r.label}
+            </button>
+          ))}
         </div>
+      </PageHead>
 
-        {error && (
-          <div style={{ backgroundColor: '#fff1f2', border: '1px solid #fecdd3', borderRadius: '8px', padding: '1.25rem', marginBottom: '1.5rem', color: '#9f1239' }}>
-            <h4 style={{ margin: '0 0 0.5rem', fontWeight: 'bold' }}>Aviso sobre el servicio de Reportería:</h4>
-            <p style={{ margin: '0 0 0.5rem', fontSize: '0.9rem' }}>{error}</p>
-            <p style={{ margin: 0, fontSize: '0.85rem', color: '#be123c', fontStyle: 'italic' }}>
-              💡 Nota de Arquitectura: <code>ms-pedidos360-report</code> requiere el cluster Kafka levantado (perfil kafka: <code>docker compose --profile kafka up -d</code>).
-            </p>
-          </div>
-        )}
-
-        {loading ? (
-          <div style={{ textAlign: 'center', padding: '4rem', color: '#6b7280' }}>
-            Cargando métricas y análisis en tiempo real...
-          </div>
-        ) : kpis ? (
-          <div>
-            {/* Tarjetas KPI */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.5rem', marginBottom: '2rem' }}>
-              
-              <div style={{ backgroundColor: '#fff', padding: '1.5rem', borderRadius: '10px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', borderLeft: '4px solid #10b981' }}>
-                <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#6b7280', textTransform: 'uppercase' }}>Ventas Totales</span>
-                <div style={{ fontSize: '2rem', fontWeight: '800', color: '#111827', margin: '0.5rem 0 0' }}>
-                  {formatMoney(kpis.totalSales)}
-                </div>
-                <div style={{ fontSize: '0.8rem', color: '#10b981', marginTop: '0.3rem', fontWeight: '600' }}>
-                  En rango {kpis.range}
-                </div>
-              </div>
-
-              <div style={{ backgroundColor: '#fff', padding: '1.5rem', borderRadius: '10px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', borderLeft: '4px solid #3b82f6' }}>
-                <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#6b7280', textTransform: 'uppercase' }}>Ticket Promedio</span>
-                <div style={{ fontSize: '2rem', fontWeight: '800', color: '#111827', margin: '0.5rem 0 0' }}>
-                  {formatMoney(kpis.averageTicket)}
-                </div>
-                <div style={{ fontSize: '0.8rem', color: '#6b7280', marginTop: '0.3rem' }}>
-                  Por pedido concretado
-                </div>
-              </div>
-
-              <div style={{ backgroundColor: '#fff', padding: '1.5rem', borderRadius: '10px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', borderLeft: '4px solid #8b5cf6' }}>
-                <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#6b7280', textTransform: 'uppercase' }}>Pedidos Totales</span>
-                <div style={{ fontSize: '2rem', fontWeight: '800', color: '#111827', margin: '0.5rem 0 0' }}>
-                  {kpis.totalOrders}
-                </div>
-                <div style={{ fontSize: '0.8rem', color: '#6b7280', marginTop: '0.3rem' }}>
-                  ✓ {kpis.deliveredOrders} entregados | ✕ {kpis.cancelledOrders} cancelados
-                </div>
-              </div>
-
-              <div style={{ backgroundColor: '#fff', padding: '1.5rem', borderRadius: '10px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', borderLeft: '4px solid #f59e0b' }}>
-                <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#6b7280', textTransform: 'uppercase' }}>Lead Time Promedio</span>
-                <div style={{ fontSize: '2rem', fontWeight: '800', color: '#b45309', margin: '0.5rem 0 0' }}>
-                  {kpis.leadTime?.averageMinutes ? `${kpis.leadTime.averageMinutes} min` : 'N/A'}
-                </div>
-                <div style={{ fontSize: '0.8rem', color: '#6b7280', marginTop: '0.3rem' }}>
-                  {kpis.leadTime?.deliveredOrders || 0} pedidos entregados evaluados
-                </div>
-              </div>
-
+      {failure ? (
+        <ServiceUnavailable title={forbidden ? 'Sin permiso para ver la reportería' : 'Reportería no disponible'} onRetry={forbidden ? undefined : load} retrying={loading}>
+          {forbidden
+            ? failure.message
+            : 'No pudimos obtener los indicadores en este momento. La reportería se calcula a partir de los eventos de pedidos y su servicio no está respondiendo. Los pedidos y el catálogo siguen funcionando con normalidad.'}
+        </ServiceUnavailable>
+      ) : loading && !kpis ? (
+        <div className="loading">Cargando indicadores…</div>
+      ) : kpis ? (
+        <>
+          <div className="kpis">
+            <div className="kpi">
+              <div className="kpi-label">Ventas</div>
+              <div className="kpi-value">{clp(kpis.totalSales)}</div>
+              <div className="kpi-foot">{RANGES.find((r) => r.id === range)?.label}</div>
             </div>
+            <div className="kpi">
+              <div className="kpi-label">Ticket promedio</div>
+              <div className="kpi-value">{clp(kpis.averageTicket)}</div>
+              <div className="kpi-foot">Por pedido no cancelado</div>
+            </div>
+            <div className="kpi">
+              <div className="kpi-label">Pedidos</div>
+              <div className="kpi-value">{kpis.totalOrders}</div>
+              <div className="kpi-foot">{kpis.deliveredOrders} entregados · {kpis.cancelledOrders} cancelados</div>
+            </div>
+            <div className="kpi">
+              <div className="kpi-label">Tiempo de entrega promedio</div>
+              <div className="kpi-value">{minutes(lead.averageMinutes)}</div>
+              <div className="kpi-foot">Desde que se crea hasta que se entrega</div>
+            </div>
+          </div>
 
-            {/* Fila 2: Estados Activos y Lead Time */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '2rem', marginBottom: '2rem' }}>
-              
-              {/* Estados Activos */}
-              <div style={{ backgroundColor: '#fff', padding: '1.5rem', borderRadius: '10px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-                <h3 style={{ margin: '0 0 1rem', color: '#111827', fontSize: '1.1rem' }}>Pedidos Activos en Tiempo Real</h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  {Object.entries(kpis.activeByStatus || {}).map(([st, count]) => (
-                    <div key={st}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.3rem', fontSize: '0.875rem' }}>
-                        <span style={{ fontWeight: '600', color: '#374151' }}>{st}</span>
-                        <span style={{ fontWeight: '700', color: '#111827' }}>{count} pedidos</span>
-                      </div>
-                      <div style={{ width: '100%', height: '8px', backgroundColor: '#e5e7eb', borderRadius: '9999px', overflow: 'hidden' }}>
-                        <div
-                          style={{
-                            height: '100%',
-                            width: `${Math.min(100, count * 15)}%`,
-                            backgroundColor: st === 'CREADO' ? '#f59e0b' : (st === 'ACEPTADO' ? '#3b82f6' : (st === 'EN_PREPARACION' ? '#8b5cf6' : '#10b981')),
-                            borderRadius: '9999px'
-                          }}
-                        />
-                      </div>
+          <div className="row">
+            <section className="card card-pad col-main stack">
+              <div className="card-head" style={{ alignItems: 'baseline' }}>
+                <h2 className="card-title">Ventas por hora</h2>
+                {peak && peak.sales > 0 && <span className="muted small">Hora peak: <b style={{ color: 'var(--ink)' }}>{peak.range}</b></span>}
+              </div>
+              {hours.length > 0 ? (
+                <div className="bars ruled" style={{ height: 240, gap: 8, overflowX: 'auto' }} role="img" aria-label="Ventas por hora">
+                  {hours.map((h, i) => (
+                    <div className="bar-col" key={i} style={{ minWidth: 36 }} title={`${h.range}: ${h.orders} pedidos, ${clp(h.sales)}`}>
+                      <span className="bar-val">{h.sales > 0 ? clpShort(h.sales) : ''}</span>
+                      <div className={`bar ${h === peak ? 'hot' : ''}`} style={{ height: `${Math.round((h.sales / maxHour) * 180)}px`, maxWidth: 36 }} />
+                      <span className="bar-label">{h.label}</span>
                     </div>
                   ))}
                 </div>
-              </div>
+              ) : (
+                <p className="muted" style={{ margin: 0 }}>Aún no hay ventas en este periodo.</p>
+              )}
+            </section>
 
-              {/* Estadísticas de Lead Time */}
-              <div style={{ backgroundColor: '#fff', padding: '1.5rem', borderRadius: '10px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-                <h3 style={{ margin: '0 0 1rem', color: '#111827', fontSize: '1.1rem' }}>Eficiencia de Entrega (Lead Time)</h3>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem' }}>
-                  <div style={{ padding: '1rem', backgroundColor: '#f8fafc', borderRadius: '8px', textAlign: 'center' }}>
-                    <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 'bold' }}>TIEMPO MÍNIMO</div>
-                    <div style={{ fontSize: '1.5rem', fontWeight: '800', color: '#0f172a', marginTop: '0.25rem' }}>
-                      {kpis.leadTime?.minMinutes !== null && kpis.leadTime?.minMinutes !== undefined ? `${kpis.leadTime.minMinutes} min` : '-'}
+            <section className="card card-pad col-side stack" style={{ gap: 14 }}>
+              <h2 className="card-title">Productos más vendidos</h2>
+              {top.map((t, i) => {
+                const p = byId[t.productId] || { id: t.productId, name: `Producto #${t.productId}` };
+                return (
+                  <div key={t.productId} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <span className="subtle small" style={{ width: 18, fontWeight: 700 }}>{i + 1}</span>
+                    <ProductThumb product={p} className="thumb sm" size={18} />
+                    <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 5 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                        <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+                        <b className="num">{clp(t.sales)}</b>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div className="meter"><div style={{ width: `${Math.round(((Number(t.sales) || 0) / topMax) * 100)}%` }} /></div>
+                        <span className="subtle small" style={{ whiteSpace: 'nowrap' }}>{t.quantity} u</span>
+                      </div>
                     </div>
                   </div>
-                  <div style={{ padding: '1rem', backgroundColor: '#f8fafc', borderRadius: '8px', textAlign: 'center' }}>
-                    <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 'bold' }}>TIEMPO MÁXIMO</div>
-                    <div style={{ fontSize: '1.5rem', fontWeight: '800', color: '#0f172a', marginTop: '0.25rem' }}>
-                      {kpis.leadTime?.maxMinutes !== null && kpis.leadTime?.maxMinutes !== undefined ? `${kpis.leadTime.maxMinutes} min` : '-'}
-                    </div>
-                  </div>
+                );
+              })}
+              {top.length === 0 && <p className="muted" style={{ margin: 0 }}>Sin ventas suficientes en este periodo.</p>}
+            </section>
+          </div>
+
+          <div className="row">
+            <section className="card card-pad col-side stack" style={{ gap: 18 }}>
+              <div className="card-head" style={{ alignItems: 'baseline' }}>
+                <h2 className="card-title">Tiempo de entrega</h2>
+                <span className="muted small">{lead.deliveredOrders || 0} pedidos entregados</span>
+              </div>
+              {lead.averageMinutes != null ? (
+                <div className="range" aria-hidden="true">
+                  <div className="range-track" />
+                  <div className="range-span" style={{ left: `${(lead.minMinutes / scaleMax) * 100}%`, width: `${((lead.maxMinutes - lead.minMinutes) / scaleMax) * 100}%` }} />
+                  <div className="range-mark" style={{ left: `${(lead.averageMinutes / scaleMax) * 100}%` }} />
                 </div>
-                <p style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '1.5rem', lineHeight: '1.4' }}>
-                  El Lead Time mide el ciclo completo desde que el cliente crea el pedido hasta la entrega en destino (<code>createdAt → deliveredAt</code>).
-                </p>
+              ) : null}
+              <div className="stat-tiles">
+                <div className="stat-tile"><div className="label">Más rápido</div><div className="value">{minutes(lead.minMinutes)}</div></div>
+                <div className="stat-tile hot"><div className="label">Promedio</div><div className="value">{minutes(lead.averageMinutes)}</div></div>
+                <div className="stat-tile"><div className="label">Más lento</div><div className="value">{minutes(lead.maxMinutes)}</div></div>
               </div>
+            </section>
 
-            </div>
-
-            {/* Fila 3: Top Productos y Ventas por Hora */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '2rem' }}>
-              
-              {/* Top Productos */}
-              <div style={{ backgroundColor: '#fff', padding: '1.5rem', borderRadius: '10px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-                <h3 style={{ margin: '0 0 1rem', color: '#111827', fontSize: '1.1rem' }}>Top 5 Productos Más Vendidos</h3>
-                {topProducts && topProducts.length > 0 ? (
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead>
-                      <tr style={{ borderBottom: '2px solid #e5e7eb', textAlign: 'left', fontSize: '0.85rem', color: '#4b5563' }}>
-                        <th style={{ padding: '0.6rem 0' }}>Producto</th>
-                        <th style={{ padding: '0.6rem 0', textAlign: 'center' }}>Cant.</th>
-                        <th style={{ padding: '0.6rem 0', textAlign: 'right' }}>Total Ventas</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {topProducts.map((p, idx) => {
-                        const catalogItem = catalogMap[p.productId];
-                        const name = catalogItem ? catalogItem.name : `Producto #${p.productId}`;
-                        const sku = catalogItem ? catalogItem.sku : null;
-                        return (
-                          <tr key={idx} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                            <td style={{ padding: '0.75rem 0' }}>
-                              <div style={{ fontWeight: '600', color: '#111827' }}>{name}</div>
-                              {sku && <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>SKU: {sku}</div>}
-                            </td>
-                            <td style={{ padding: '0.75rem 0', textAlign: 'center', fontWeight: 'bold' }}>
-                              <span style={{ padding: '0.2rem 0.5rem', backgroundColor: '#eff6ff', color: '#2563eb', borderRadius: '4px' }}>
-                                {p.quantity} un.
-                              </span>
-                            </td>
-                            <td style={{ padding: '0.75rem 0', textAlign: 'right', fontWeight: '700', color: '#111827' }}>
-                              {formatMoney(p.sales)}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                ) : (
-                  <p style={{ color: '#9ca3af', fontStyle: 'italic', padding: '1rem 0' }}>
-                    No hay suficientes datos de ventas para mostrar los productos líderes en este periodo.
-                  </p>
-                )}
+            <section className="card card-pad col-main stack" style={{ gap: 14 }}>
+              <div className="card-head" style={{ alignItems: 'baseline' }}>
+                <h2 className="card-title">Pedidos activos ahora</h2>
+                <span className="muted small">{activeTotal} en curso</span>
               </div>
-
-              {/* Ventas por Hora */}
-              <div style={{ backgroundColor: '#fff', padding: '1.5rem', borderRadius: '10px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column' }}>
-                <h3 style={{ margin: '0 0 1rem', color: '#111827', fontSize: '1.1rem' }}>Histograma de Ventas por Hora</h3>
-                {kpis.salesByHour && kpis.salesByHour.length > 0 ? (
-                  <div style={{ flex: 1, display: 'flex', alignItems: 'flex-end', gap: '0.5rem', height: '220px', borderBottom: '1px solid #e5e7eb', paddingBottom: '0.5rem', overflowX: 'auto' }}>
-                    {(() => {
-                      const maxSale = Math.max(...kpis.salesByHour.map(s => Number(s.sales) || 0), 100);
-                      return kpis.salesByHour.map((item, idx) => {
-                        const h = item.hour ? new Date(item.hour).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : idx;
-                        const height = Math.max(8, ((Number(item.sales) || 0) / maxSale) * 150);
-                        return (
-                          <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, minWidth: '45px' }}>
-                            <span style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: '600' }}>
-                              {item.orders}p
-                            </span>
-                            <div
-                              style={{
-                                width: '24px',
-                                height: `${height}px`,
-                                backgroundColor: '#2563eb',
-                                borderRadius: '4px 4px 0 0',
-                                marginTop: '0.25rem'
-                              }}
-                              title={`Hora: ${h} | Pedidos: ${item.orders} | Ventas: ${formatMoney(item.sales)}`}
-                            />
-                            <span style={{ fontSize: '0.7rem', color: '#9ca3af', marginTop: '0.4rem', whiteSpace: 'nowrap' }}>
-                              {h}
-                            </span>
-                          </div>
-                        );
-                      });
-                    })()}
+              <div className="status-tiles">
+                {ACTIVE_ORDER.map((s) => (
+                  <div key={s} className={`status-tile st-${s}`}>
+                    <div className="label">{STATUS_LABEL[s]}</div>
+                    <div className="value">{Number(active[s]) || 0}</div>
                   </div>
-                ) : (
-                  <p style={{ color: '#9ca3af', fontStyle: 'italic', padding: '2rem 0', textAlign: 'center' }}>
-                    Sin datos de ventas agrupadas por hora en el rango actual.
-                  </p>
-                )}
+                ))}
               </div>
-
-            </div>
+            </section>
           </div>
-        ) : (
-          <div style={{ backgroundColor: '#fff', padding: '3rem', borderRadius: '8px', textAlign: 'center', color: '#6b7280', border: '1px solid #e5e7eb' }}>
-            No se pudo obtener el informe de métricas. Revisa la conexión con ms-pedidos360-report.
-          </div>
-        )}
-      </div>
+        </>
+      ) : (
+        <Alert>No hay datos para mostrar.</Alert>
+      )}
     </Layout>
   );
 }

@@ -13,7 +13,7 @@ function ProtectedRoute({ children }) {
   const { accounts, inProgress } = useMsal();
   
   if (inProgress !== InteractionStatus.None) {
-    return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', fontSize: '1.1rem', color: '#64748b' }}>Cargando sesión...</div>;
+    return <div className="loading" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Cargando sesión…</div>;
   }
   
   if (accounts.length === 0) {
