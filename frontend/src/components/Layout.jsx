@@ -1,150 +1,132 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useMsal } from '@azure/msal-react';
-import { Link, useLocation } from 'react-router-dom';
-import { getAccessToken, decodeClaims } from '../auth/token';
+import { NavLink } from 'react-router-dom';
+import { useRoles, clearRolesCache } from '../hooks/useRoles';
+import { api } from '../api/http';
+import { clearCart } from '../lib/cart';
+import { IconBag, IconHome, IconTag, IconChart, IconShield, IconLogout } from './Icons';
 
-export default function Layout({ children, title }) {
-  const { instance, accounts } = useMsal();
-  const account = accounts[0];
-  const location = useLocation();
-  
-  const rolesFromId = account?.idTokenClaims?.roles || [];
-  const [roles, setRoles] = useState(rolesFromId);
+// Cantidad de pedidos por aceptar (insignia del menú para Admin/Operador).
+let pendingCache = { value: null, at: 0 };
+const listeners = new Set();
+
+export function publishPendingCount(orders) {
+  const value = (orders || []).filter((o) => o.status === 'CREADO').length;
+  pendingCache = { value, at: Date.now() };
+  listeners.forEach((fn) => fn(value));
+}
+
+function usePendingCount(enabled) {
+  const [count, setCount] = useState(pendingCache.value);
+  useEffect(() => {
+    if (!enabled) return undefined;
+    listeners.add(setCount);
+    if (Date.now() - pendingCache.at > 30000) {
+      api.get('/api/orders').then((data) => publishPendingCount(Array.isArray(data) ? data : [])).catch(() => {});
+    }
+    return () => listeners.delete(setCount);
+  }, [enabled]);
+  return count;
+}
+
+function initials(name) {
+  const parts = (name || '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  return ((parts[0][0] || '') + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase();
+}
+
+function titleCase(name) {
+  return (name || '')
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
+export default function Layout({ title, children }) {
+  const { instance } = useMsal();
+  const { account, email, isAdmin, isAuditor, isOperator, isStaff } = useRoles();
+  const pending = usePendingCount(isStaff);
 
   useEffect(() => {
-    const fetchRoles = async () => {
-      if (!account) return;
-      try {
-        const token = await getAccessToken(instance, account);
-        if (token) {
-          const claims = decodeClaims(token);
-          if (claims.roles) setRoles(claims.roles);
-        }
-      } catch (e) {
-        console.error(e);
-      }
-    };
-    fetchRoles();
-  }, [instance, account]);
+    document.title = title ? `${title} · Pedidos360` : 'Pedidos360';
+  }, [title]);
 
-  const isAdmin = roles.includes('Admin');
-  const isAuditor = roles.includes('Auditor');
-  const isOperator = roles.includes('Operator');
-  
   const handleLogout = () => {
-    instance.logoutRedirect({
-      postLogoutRedirectUri: `${window.location.origin}/login`,
-    });
+    clearRolesCache();
+    clearCart();
+    instance.logoutRedirect({ postLogoutRedirectUri: `${window.location.origin}/login` });
   };
 
-  const getPrimaryRole = () => {
-    if (isAdmin) return 'ADMIN';
-    if (isAuditor) return 'AUDITOR';
-    if (isOperator) return 'OPERATOR';
-    return 'CUSTOMER';
-  };
+  const role = isAdmin
+    ? { label: 'Admin', cls: 'admin', sub: 'Panel de administración' }
+    : isOperator
+      ? { label: 'Operador', cls: 'operator', sub: 'Panel de operación' }
+      : isAuditor
+        ? { label: 'Auditor', cls: 'auditor', sub: 'Panel de auditoría' }
+        : { label: 'Cliente', cls: '', sub: 'Panadería y cafetería' };
 
-  const badgeColor = isAdmin ? '#991b1b' : (isAuditor ? '#6b21a8' : (isOperator ? '#0369a1' : '#065f46'));
-  const badgeBg = isAdmin ? '#fee2e2' : (isAuditor ? '#f3e8ff' : (isOperator ? '#e0f2fe' : '#d1fae5'));
-
-  const navItemStyle = (path) => {
-    const isActive = location.pathname === path || (path !== '/dashboard' && location.pathname.startsWith(path));
-    return {
-      textDecoration: 'none',
-      color: isActive ? '#0070f3' : '#334155',
-      fontWeight: isActive ? '700' : '500',
-      display: 'flex',
-      alignItems: 'center',
-      gap: '0.6rem',
-      padding: '0.5rem 0.75rem',
-      borderRadius: '6px',
-      backgroundColor: isActive ? '#e0f2fe' : 'transparent',
-      transition: 'background 0.15s ease'
-    };
-  };
+  const displayName = titleCase(account?.name) || email || 'Usuario';
+  const navClass = ({ isActive }) => (isActive ? 'active' : undefined);
 
   return (
-    <div style={{ display: 'flex', height: '100vh', width: '100vw' }}>
-      <aside style={{ width: '260px', backgroundColor: '#f8fafc', borderRight: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: '1.25rem', fontWeight: '800', fontSize: '1.25rem', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#0f172a' }}>
-          <span>📦</span> Pedidos360
-        </div>
-        
-        <nav style={{ flex: 1, padding: '1rem' }}>
-          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-            <li>
-              <Link to="/dashboard" style={navItemStyle('/dashboard')}>
-                <span>📊</span> Inicio
-              </Link>
-            </li>
-            <li>
-              <Link to="/orders" style={navItemStyle('/orders')}>
-                <span>🛍️</span> {(isAdmin || isOperator) ? 'Gestión de Pedidos' : 'Mis Pedidos'}
-              </Link>
-            </li>
-            <li>
-              <Link to="/catalog" style={navItemStyle('/catalog')}>
-                <span>🏷️</span> Catálogo & Stock
-              </Link>
-            </li>
+    <div className="app">
+      <aside className="sidebar">
+        <div className="sidebar-top">
+          <div className="brand">
+            <div className="brand-mark"><IconBag size={22} /></div>
+            <div>
+              <div className="brand-name">Pedidos360</div>
+              <div className="brand-sub">{role.sub}</div>
+            </div>
+          </div>
 
+          <nav className="nav" aria-label="Principal">
+            <NavLink to="/dashboard" className={navClass}>
+              <IconHome /> <span className="nav-label">Inicio</span>
+            </NavLink>
+            {!isAuditor || isStaff ? (
+              <NavLink to="/orders" className={navClass}>
+                <IconBag /> <span className="nav-label">{isStaff ? 'Pedidos' : 'Mis pedidos'}</span>
+                {isStaff && pending > 0 && <span className="nav-badge" aria-label={`${pending} por aceptar`}>{pending}</span>}
+              </NavLink>
+            ) : null}
+            <NavLink to="/catalog" className={navClass}>
+              <IconTag /> <span className="nav-label">Catálogo</span>
+            </NavLink>
             {isAdmin && (
-              <li>
-                <Link to="/reports" style={navItemStyle('/reports')}>
-                  <span>📈</span> Reportería & KPIs
-                </Link>
-              </li>
+              <NavLink to="/reports" className={navClass}>
+                <IconChart /> <span className="nav-label">Reportería</span>
+              </NavLink>
             )}
-
             {(isAdmin || isAuditor) && (
-              <li>
-                <Link to="/audit" style={navItemStyle('/audit')}>
-                  <span>🛡️</span> Auditoría Kafka
-                </Link>
-              </li>
+              <NavLink to="/audit" className={navClass}>
+                <IconShield /> <span className="nav-label">Auditoría</span>
+              </NavLink>
             )}
-          </ul>
-        </nav>
+          </nav>
+        </div>
 
-        {/* Info del ecosistema de microservicios */}
-        <div style={{ padding: '0.85rem 1rem', borderTop: '1px solid #e2e8f0', fontSize: '0.75rem', color: '#64748b', backgroundColor: '#f1f5f9' }}>
-          <div style={{ fontWeight: 'bold', color: '#334155', marginBottom: '0.2rem' }}>Microservicios Activos:</div>
-          <div>• ms-bff (8080)</div>
-          <div>• ms-orders (8081)</div>
-          <div>• ms-catalog (8082)</div>
-          <div>• ms-notify (RabbitMQ)</div>
-          <div>• ms-audit / report (Kafka)</div>
+        <div className="userbox">
+          <div className="user">
+            <div className="avatar" aria-hidden="true">{initials(account?.name || email)}</div>
+            <div style={{ minWidth: 0 }}>
+              <div className="user-name">{displayName}</div>
+              <div className="user-mail">{email}</div>
+            </div>
+          </div>
+          <div className="user-actions">
+            <span className={`role-chip ${role.cls}`}>{role.label}</span>
+            <button type="button" className="btn-logout" onClick={handleLogout}>
+              <IconLogout size={16} /> Cerrar sesión
+            </button>
+          </div>
         </div>
       </aside>
 
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <header style={{ height: '65px', backgroundColor: '#fff', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 2rem' }}>
-          <h1 style={{ margin: 0, fontSize: '1.4rem', fontWeight: '700', color: '#0f172a' }}>{title || 'Dashboard'}</h1>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-              <span style={{ fontSize: '0.9rem', color: '#334155' }}>
-                Bienvenido, <b>{account?.name || account?.username}</b>
-              </span>
-              <span style={{ 
-                padding: '0.25rem 0.6rem', 
-                borderRadius: '9999px', 
-                backgroundColor: badgeBg, 
-                color: badgeColor, 
-                fontSize: '0.75rem', 
-                fontWeight: 'bold',
-                letterSpacing: '0.05em'
-              }}>
-                ROL: {getPrimaryRole()}
-              </span>
-            </div>
-            <button className="btn" onClick={handleLogout} style={{ fontSize: '0.85rem' }}>Cerrar Sesión</button>
-          </div>
-        </header>
-
-        <main style={{ padding: '2rem', overflowY: 'auto', flex: 1, backgroundColor: '#f8fafc' }}>
-          {children}
-        </main>
-      </div>
+      <main className="main">{children}</main>
     </div>
   );
 }
