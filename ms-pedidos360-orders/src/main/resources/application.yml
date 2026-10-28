@@ -41,6 +41,9 @@ app:
   # false = no publica en Kafka/RabbitMQ (desarrollo sin brokers y tests)
   messaging:
     enabled: ${MESSAGING_ENABLED:false}
+  # false = no publica eventos en Kafka (los comandos a RabbitMQ siguen saliendo); para desplegar sin ec2-kafka
+  kafka:
+    enabled: ${KAFKA_ENABLED:true}
   # Coordinacion de stock con ms-pedidos360-catalog al aceptar/cancelar
   catalog:
     enabled: ${CATALOG_ENABLED:false}

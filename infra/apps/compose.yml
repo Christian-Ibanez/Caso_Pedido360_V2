@@ -1,40 +1,44 @@
-# ec2-apps: BFF + orders-svc, catalog-svc, notify-svc, audit-svc, report-svc.
-#   cp .env.example .env   (completar IPs privadas de ec2-mq / ec2-kafka y la base Oracle cloud)
+# ec2-apps: microservicios + base de datos Oracle en la misma instancia.
+#   cp .env.example .env   (completar la IP privada de ec2-mq)
 #   docker compose up -d --build
-# API Gateway -> BFF (:8080) -> micros por la red interna de Docker.
-# Para probar sin base cloud: docker compose --profile oracle-local up -d --build  (y DB_URL con host "oracle")
+# Levanta: oracle, orders-svc, catalog-svc, notify-svc.
+# El BFF va en su propia instancia (infra/bff) y llega a orders/catalog por la IP privada de esta instancia.
+# audit-svc y report-svc consumen Kafka: solo se levantan con el perfil "kafka" cuando exista ec2-kafka
+#   docker compose --profile kafka up -d --build   (y KAFKA_ENABLED=true + KAFKA_BOOTSTRAP_SERVERS en .env)
 x-app: &app
   restart: unless-stopped
   environment: &app-env
     TZ: America/Santiago
     SPRING_PROFILES_ACTIVE: oracle
-    DB_URL: ${DB_URL}
-    DB_USERNAME: ${DB_USERNAME}
-    DB_PASSWORD: ${DB_PASSWORD}
+    DB_URL: ${DB_URL:-jdbc:oracle:thin:@//oracle:1521/FREEPDB1}
+    DB_USERNAME: ${DB_USERNAME:-pedidos360}
+    DB_PASSWORD: ${DB_PASSWORD:-pedidos360}
     CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
     JAVA_OPTS: -XX:MaxRAMPercentage=75
   depends_on:
     oracle:
       condition: service_healthy
-      required: false
 
 services:
-  bff:
-    build: ../../ms-pedidos360-bff
-    image: pedidos360/ms-pedidos360-bff
-    container_name: bff
-    restart: unless-stopped
-    ports:
-      - "8080:8080"
+  # Base de datos de los micros (tablas con prefijo P360_). Puerto 1521 publicado para revisar con SQL Developer.
+  oracle:
+    image: gvenzl/oracle-free:23-slim-faststart
+    container_name: oracle
     environment:
-      TZ: America/Santiago
-      ENTRA_TENANT_ID: ${ENTRA_TENANT_ID}
-      API_CLIENT_ID: ${API_CLIENT_ID}
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
-      ORDERS_URL: http://orders-svc:8081
-      CATALOG_URL: http://catalog-svc:8082
-      AUDIT_URL: http://audit-svc:8084
-      REPORT_URL: http://report-svc:8086
+      ORACLE_PASSWORD: ${ORACLE_ADMIN_PASSWORD:-Admin123}
+      APP_USER: ${DB_USERNAME:-pedidos360}
+      APP_USER_PASSWORD: ${DB_PASSWORD:-pedidos360}
+    ports:
+      - "1521:1521"
+    volumes:
+      - oradata:/opt/oracle/oradata
+    healthcheck:
+      test: ["CMD", "healthcheck.sh"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    restart: unless-stopped
 
   orders-svc:
     <<: *app
@@ -49,7 +53,9 @@ services:
       RABBITMQ_ADDRESSES: ${RABBITMQ_ADDRESSES}
       RABBITMQ_USER: ${RABBITMQ_USER:-pedidos360}
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-pedidos360}
-      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+      # Sin ec2-kafka: los comandos a RabbitMQ salen igual, solo se omite el evento en orders.events
+      KAFKA_ENABLED: ${KAFKA_ENABLED:-false}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092}
       CATALOG_ENABLED: "true"
       CATALOG_URL: http://catalog-svc:8082
 
@@ -76,8 +82,10 @@ services:
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-pedidos360}
       JAVA_OPTS: -XX:MaxRAMPercentage=75
 
+  # --- Solo con ec2-kafka (perfil "kafka") ---
   audit-svc:
     <<: *app
+    profiles: ["kafka"]
     build: ../../ms-pedidos360-audit
     image: pedidos360/ms-pedidos360-audit
     container_name: audit-svc
@@ -89,6 +97,7 @@ services:
 
   report-svc:
     <<: *app
+    profiles: ["kafka"]
     build: ../../ms-pedidos360-report
     image: pedidos360/ms-pedidos360-report
     container_name: report-svc
@@ -97,27 +106,6 @@ services:
     environment:
       <<: *app-env
       KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
-
-  # Opcional: Oracle local si todavia no esta la base cloud (docker compose --profile oracle-local ...)
-  oracle:
-    image: gvenzl/oracle-free:23-slim-faststart
-    container_name: oracle
-    profiles: ["oracle-local"]
-    environment:
-      ORACLE_PASSWORD: ${ORACLE_ADMIN_PASSWORD:-Admin123}
-      APP_USER: ${DB_USERNAME:-pedidos360}
-      APP_USER_PASSWORD: ${DB_PASSWORD:-pedidos360}
-    ports:
-      - "1521:1521"
-    volumes:
-      - oradata:/opt/oracle/oradata
-    healthcheck:
-      test: ["CMD", "healthcheck.sh"]
-      interval: 10s
-      timeout: 5s
-      retries: 30
-      start_period: 30s
-    restart: unless-stopped
 
 volumes:
   oradata:
