@@ -67,3 +67,12 @@ export const IconBell = (p) => (
     <path d="M10 20a2 2 0 0 0 4 0" />
   </Svg>
 );
+
+export const IconQueue = (p) => (
+  <Svg {...p}>
+    <rect x="3" y="4" width="18" height="5" rx="1.5" />
+    <rect x="3" y="15" width="18" height="5" rx="1.5" />
+    <path d="M12 9v6" />
+    <path d="m9.5 12.5 2.5 2.5 2.5-2.5" />
+  </Svg>
+);

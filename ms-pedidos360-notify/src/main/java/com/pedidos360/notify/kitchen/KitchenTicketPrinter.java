@@ -1,6 +1,8 @@
-package com.pedidos360.notify.handler;
+package com.pedidos360.notify.kitchen;
 
-import com.pedidos360.notify.consumer.CommandEnvelope;
+import com.pedidos360.notify.messaging.CommandEnvelope;
+import com.pedidos360.notify.messaging.CommandHandler;
+import com.pedidos360.notify.messaging.PermanentProcessingException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -15,7 +17,7 @@ public class KitchenTicketPrinter implements CommandHandler {
 	public void handle(CommandEnvelope command) {
 		Map<String, Object> p = command.payload();
 		if (p == null || p.get("orderId") == null || p.get("items") == null) {
-			throw new IllegalArgumentException("Ticket de cocina sin pedido o sin items");
+			throw new PermanentProcessingException("Ticket de cocina sin pedido o sin items");
 		}
 		log.info("[COCINA] local={} pedido={} cliente={} items={} notas={} (eventId={})",
 				p.get("storeId"), p.get("orderId"), p.get("customerName"), p.get("items"), p.get("notes"), command.eventId());

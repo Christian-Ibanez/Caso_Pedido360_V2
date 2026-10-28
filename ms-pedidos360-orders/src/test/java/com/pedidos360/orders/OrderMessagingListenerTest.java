@@ -2,7 +2,7 @@ package com.pedidos360.orders;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pedidos360.orders.dto.OrderResponse;
-import com.pedidos360.orders.messaging.MessagingTopology;
+import com.pedidos360.orders.messaging.MessagingConfig;
 import com.pedidos360.orders.messaging.OrderEvent;
 import com.pedidos360.orders.messaging.OrderMessagingListener;
 import com.pedidos360.orders.messaging.RequestMetadata;
@@ -56,9 +56,9 @@ class OrderMessagingListenerTest {
 		listener.on(aceptado());
 
 		verifyNoInteractions(kafka);
-		verify(rabbit).convertAndSend(eq(MessagingTopology.CMD_DIRECT), eq(MessagingTopology.RK_EMAIL), any(Object.class), any(MessagePostProcessor.class));
-		verify(rabbit).convertAndSend(eq(MessagingTopology.CMD_DIRECT), eq(MessagingTopology.RK_KITCHEN), any(Object.class), any(MessagePostProcessor.class));
-		verify(rabbit).convertAndSend(eq(MessagingTopology.CMD_DIRECT), eq(MessagingTopology.RK_INAPP), any(Object.class), any(MessagePostProcessor.class));
+		verify(rabbit).convertAndSend(eq(MessagingConfig.CMD_DIRECT), eq(MessagingConfig.RK_EMAIL), any(Object.class), any(MessagePostProcessor.class));
+		verify(rabbit).convertAndSend(eq(MessagingConfig.CMD_DIRECT), eq(MessagingConfig.RK_KITCHEN), any(Object.class), any(MessagePostProcessor.class));
+		verify(rabbit).convertAndSend(eq(MessagingConfig.CMD_DIRECT), eq(MessagingConfig.RK_INAPP), any(Object.class), any(MessagePostProcessor.class));
 	}
 
 	@Test
@@ -84,7 +84,7 @@ class OrderMessagingListenerTest {
 
 		listener.on(aceptado());
 
-		verify(kafka).send(eq(MessagingTopology.ORDERS_EVENTS_TOPIC), eq("7"), anyString());
+		verify(kafka).send(eq(MessagingConfig.ORDERS_EVENTS_TOPIC), eq("7"), anyString());
 	}
 
 	@Test
@@ -96,7 +96,7 @@ class OrderMessagingListenerTest {
 
 		listener.on(aceptado());
 
-		verify(unsent, atLeastOnce()).recordFailure(eq(MessagingTopology.CMD_DIRECT), eq(MessagingTopology.RK_INAPP),
+		verify(unsent, atLeastOnce()).recordFailure(eq(MessagingConfig.CMD_DIRECT), eq(MessagingConfig.RK_INAPP),
 				any(Command.class), any(Exception.class));
 	}
 }

@@ -41,6 +41,8 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.DELETE, "/api/catalog", "/api/catalog/**").hasRole(ADMIN)
                 // Reporteria: solo Admin, solo lectura
                 .requestMatchers(HttpMethod.GET, "/api/report", "/api/report/**").hasRole(ADMIN)
+                // Administrador de RabbitMQ (ms-mqadmin): crear y eliminar colas, exchanges y bindings, solo Admin
+                .requestMatchers("/api/mq/**").hasRole(ADMIN)
                 // Auditoria: Admin o Auditor, solo lectura
                 .requestMatchers(HttpMethod.GET, "/api/audit", "/api/audit/**").hasAnyRole(ADMIN, AUDITOR)
                 // Todo lo demás se rechaza

@@ -1,4 +1,4 @@
-package com.pedidos360.notify.consumer;
+package com.pedidos360.notify.messaging;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 

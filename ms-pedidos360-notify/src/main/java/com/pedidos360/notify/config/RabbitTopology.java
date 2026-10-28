@@ -1,6 +1,8 @@
 package com.pedidos360.notify.config;
 
 import org.springframework.amqp.core.*;
+import com.pedidos360.notify.messaging.RetryProperties;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -18,6 +20,7 @@ import java.util.List;
  * contra un RabbitMQ vacio.
  */
 @Configuration
+@EnableConfigurationProperties(RetryProperties.class)
 public class RabbitTopology {
 
 	public static final String CMD_DIRECT = "cmd.direct";

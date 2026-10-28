@@ -1,7 +1,8 @@
 package com.pedidos360.notify;
 
-import com.pedidos360.notify.consumer.CommandConsumer;
-import com.pedidos360.notify.consumer.DeadLetterConsumer;
+import com.pedidos360.notify.email.EmailConsumer;
+import com.pedidos360.notify.kitchen.KitchenConsumer;
+import com.pedidos360.notify.messaging.DeadLetterConsumer;
 import com.rabbitmq.client.Channel;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.junit.jupiter.api.Test;
@@ -17,12 +18,21 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
 
-/** ACK si se procesa, ACK sin reprocesar si es duplicado, NACK sin requeue (-> DLQ) si falla. */
-@SpringBootTest(properties = "spring.rabbitmq.listener.simple.auto-startup=false")
+/**
+ * Rutas de confirmacion: ACK si se procesa (y sin reprocesar si es duplicado), reintentos ante errores recuperables
+ * y NACK sin requeue (-> DLQ) ante errores no recuperables o cuando se agotan los reintentos.
+ */
+@SpringBootTest(properties = {
+		"spring.rabbitmq.listener.simple.auto-startup=false",
+		"app.messaging.retry.max-attempts=3",
+		"app.messaging.retry.initial-backoff-ms=1" })
 class CommandConsumerTest {
 
 	@Autowired
-	CommandConsumer consumer;
+	EmailConsumer emailConsumer;
+
+	@Autowired
+	KitchenConsumer kitchenConsumer;
 
 	@Autowired
 	DeadLetterConsumer deadLetterConsumer;
@@ -33,22 +43,42 @@ class CommandConsumerTest {
 	@Test
 	void emailOkHaceAckYDuplicadoNoSeReprocesa() throws Exception {
 		Channel channel = mock(Channel.class);
-		consumer.onEmail(message(1, "evt-1", "ana@mail.com"), channel);
+		emailConsumer.onEmail(message(1, "evt-1", "ana@mail.com"), channel);
 		verify(channel).basicAck(1, false);
 
-		consumer.onEmail(message(2, "evt-1", "ana@mail.com"), channel);
+		emailConsumer.onEmail(message(2, "evt-1", "ana@mail.com"), channel);
 		verify(channel).basicAck(2, false);
 		verify(channel, never()).basicNack(anyLong(), anyBoolean(), anyBoolean());
 	}
 
 	@Test
-	void fallaHaceNackSinRequeueParaIrALaDlq() throws Exception {
+	void errorNoRecuperableHaceNackSinRequeueParaIrALaDlq() throws Exception {
 		Channel channel = mock(Channel.class);
-		consumer.onEmail(message(7, "evt-2", "cliente@fail.test"), channel);
+		emailConsumer.onEmail(message(7, "evt-2", "cliente@fail.test"), channel);
 		verify(channel).basicNack(7, false, false);
 
-		consumer.onKitchen(raw(8, "esto no es json"), channel);
+		kitchenConsumer.onKitchenTicket(raw(8, "esto no es json"), channel);
 		verify(channel).basicNack(8, false, false);
+		verify(channel, never()).basicAck(anyLong(), anyBoolean());
+	}
+
+	@Test
+	void errorRecuperableSeReintentaYTerminaEnAck() throws Exception {
+		Channel channel = mock(Channel.class);
+		// @retry.test falla en los 2 primeros intentos y funciona en el tercero
+		emailConsumer.onEmail(message(10, "evt-r", "cliente@retry.test"), channel);
+		verify(channel).basicAck(10, false);
+		verify(channel, never()).basicNack(anyLong(), anyBoolean(), anyBoolean());
+	}
+
+	@Test
+	void reintentosAgotadosHacenNackHaciaLaDlq() throws Exception {
+		Channel channel = mock(Channel.class);
+		// @down.test nunca responde: 3 intentos y luego DLQ, nunca requeue=true
+		emailConsumer.onEmail(message(11, "evt-d", "cliente@down.test"), channel);
+		verify(channel).basicNack(11, false, false);
+		verify(channel, never()).basicNack(anyLong(), anyBoolean(), eq(true));
+		verify(channel, never()).basicAck(anyLong(), anyBoolean());
 	}
 
 	@Test

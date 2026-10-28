@@ -52,7 +52,7 @@ public class OrderMessagingListener {
 			publishEvent(event);
 		} else {
 			log.debug("Kafka desactivado, no se publica {} del pedido {} en {}", event.type(), event.orderId(),
-					MessagingTopology.ORDERS_EVENTS_TOPIC);
+					MessagingConfig.ORDERS_EVENTS_TOPIC);
 		}
 		sendCommands(event);
 	}
@@ -60,7 +60,7 @@ public class OrderMessagingListener {
 	private void publishEvent(OrderEvent event) {
 		try {
 			String json = objectMapper.writeValueAsString(event);
-			kafkaTemplate.send(MessagingTopology.ORDERS_EVENTS_TOPIC, String.valueOf(event.orderId()), json)
+			kafkaTemplate.send(MessagingConfig.ORDERS_EVENTS_TOPIC, String.valueOf(event.orderId()), json)
 					.whenComplete((result, ex) -> {
 						if (ex != null) {
 							log.error("No se pudo publicar {} del pedido {} en Kafka: {}", event.type(), event.orderId(), ex.getMessage());
@@ -83,9 +83,9 @@ public class OrderMessagingListener {
 
 		// Cancelaciones salen como prioritarias por el exchange topic (email.# -> q.cmd.email)
 		if (event.status() == OrderStatus.CANCELADO) {
-			send(MessagingTopology.CMD_TOPIC, MessagingTopology.RK_EMAIL_HIGH, Command.of("EmailSend", event, emailPayload(event)));
+			send(MessagingConfig.CMD_TOPIC, MessagingConfig.RK_EMAIL_HIGH, Command.of("EmailSend", event, emailPayload(event)));
 		} else {
-			send(MessagingTopology.CMD_DIRECT, MessagingTopology.RK_EMAIL, Command.of("EmailSend", event, emailPayload(event)));
+			send(MessagingConfig.CMD_DIRECT, MessagingConfig.RK_EMAIL, Command.of("EmailSend", event, emailPayload(event)));
 		}
 
 		if (event.status() == OrderStatus.ACEPTADO) {
@@ -95,7 +95,7 @@ public class OrderMessagingListener {
 			ticket.put("customerName", order.customerName());
 			ticket.put("notes", order.notes());
 			ticket.put("items", order.items());
-			send(MessagingTopology.CMD_DIRECT, MessagingTopology.RK_KITCHEN, Command.of("KitchenTicket", event, ticket));
+			send(MessagingConfig.CMD_DIRECT, MessagingConfig.RK_KITCHEN, Command.of("KitchenTicket", event, ticket));
 		}
 
 		if (event.status() == OrderStatus.ENTREGADO) {
@@ -106,12 +106,12 @@ public class OrderMessagingListener {
 			invoice.put("customerEmail", order.customerEmail());
 			invoice.put("total", order.total());
 			invoice.put("items", order.items());
-			send(MessagingTopology.CMD_TOPIC, MessagingTopology.RK_INVOICE_PDF, Command.of("InvoiceGenerate", event, invoice));
+			send(MessagingConfig.CMD_TOPIC, MessagingConfig.RK_INVOICE_PDF, Command.of("InvoiceGenerate", event, invoice));
 		}
 
 		Map<String, Object> inApp = inAppPayload(event);
 		if (inApp != null) {
-			send(MessagingTopology.CMD_DIRECT, MessagingTopology.RK_INAPP, Command.of("InAppNotify", event, inApp));
+			send(MessagingConfig.CMD_DIRECT, MessagingConfig.RK_INAPP, Command.of("InAppNotify", event, inApp));
 		}
 	}
 

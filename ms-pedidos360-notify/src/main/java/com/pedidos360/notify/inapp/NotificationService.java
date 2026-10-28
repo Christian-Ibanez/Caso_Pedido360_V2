@@ -1,6 +1,7 @@
 package com.pedidos360.notify.inapp;
 
-import com.pedidos360.notify.consumer.CommandEnvelope;
+import com.pedidos360.notify.messaging.CommandEnvelope;
+import com.pedidos360.notify.messaging.PermanentProcessingException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -31,19 +32,19 @@ public class NotificationService {
 	public Notification store(CommandEnvelope command) {
 		Map<String, Object> p = command.payload();
 		if (p == null) {
-			throw new IllegalArgumentException("Comando InAppNotify sin payload");
+			throw new PermanentProcessingException("Comando InAppNotify sin payload");
 		}
 		String audience = text(p.get("audience")).toUpperCase(Locale.ROOT);
 		String recipient = normalize(p.get("recipient"));
 		String title = text(p.get("title"));
 		if (!ADMIN.equals(audience) && !CUSTOMER.equals(audience)) {
-			throw new IllegalArgumentException("audience invalida: " + audience);
+			throw new PermanentProcessingException("audience invalida: " + audience);
 		}
 		if (CUSTOMER.equals(audience) && recipient == null) {
-			throw new IllegalArgumentException("Notificacion de cliente sin destinatario (payload.recipient)");
+			throw new PermanentProcessingException("Notificacion de cliente sin destinatario (payload.recipient)");
 		}
 		if (title.isBlank()) {
-			throw new IllegalArgumentException("Notificacion sin titulo");
+			throw new PermanentProcessingException("Notificacion sin titulo");
 		}
 		if (command.eventId() != null && repository.existsByEventId(command.eventId())) {
 			return null;

@@ -1,6 +1,6 @@
 package com.pedidos360.notify;
 
-import com.pedidos360.notify.consumer.CommandConsumer;
+import com.pedidos360.notify.inapp.InAppConsumer;
 import com.pedidos360.notify.inapp.NotificationRepository;
 import com.rabbitmq.client.Channel;
 import org.junit.jupiter.api.BeforeEach;
@@ -30,7 +30,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class InAppNotificationTest {
 
 	@Autowired
-	CommandConsumer consumer;
+	InAppConsumer consumer;
 
 	@Autowired
 	NotificationRepository repository;

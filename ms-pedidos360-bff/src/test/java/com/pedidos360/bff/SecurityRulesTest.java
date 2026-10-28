@@ -38,6 +38,17 @@ class SecurityRulesTest {
 	}
 
 	@Test
+	void administradorDeRabbitSoloParaAdmin() throws Exception {
+		mvc.perform(get("/api/mq/queues")).andExpect(status().isUnauthorized());
+		// Un cliente (solo scope) o un Auditor no pueden administrar RabbitMQ
+		mvc.perform(get("/api/mq/queues").with(jwt().authorities(new SimpleGrantedAuthority("SCOPE_access_as_user"))))
+				.andExpect(status().isForbidden());
+		mvc.perform(delete("/api/mq/queues/q.temp").with(jwt().authorities(
+				new SimpleGrantedAuthority("SCOPE_access_as_user"), new SimpleGrantedAuthority("ROLE_Auditor"))))
+				.andExpect(status().isForbidden());
+	}
+
+	@Test
 	void tokenSinScopeDeLaApiEsRechazado() throws Exception {
 		mvc.perform(get("/api/orders").with(jwt().authorities(new SimpleGrantedAuthority("SCOPE_otra.cosa"))))
 				.andExpect(status().isForbidden());

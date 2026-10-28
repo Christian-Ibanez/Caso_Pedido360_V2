@@ -18,6 +18,7 @@ services:
       ORDERS_URL: http://${APPS_HOST}:8081
       CATALOG_URL: http://${APPS_HOST}:8082
       NOTIFY_URL: http://${APPS_HOST}:8083
+      MQADMIN_URL: http://${APPS_HOST}:8085
       # Solo responden si ec2-apps levanta el perfil "kafka"
       AUDIT_URL: http://${APPS_HOST}:8084
       REPORT_URL: http://${APPS_HOST}:8086

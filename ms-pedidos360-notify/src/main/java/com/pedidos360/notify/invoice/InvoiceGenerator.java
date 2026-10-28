@@ -1,6 +1,8 @@
-package com.pedidos360.notify.handler;
+package com.pedidos360.notify.invoice;
 
-import com.pedidos360.notify.consumer.CommandEnvelope;
+import com.pedidos360.notify.messaging.CommandEnvelope;
+import com.pedidos360.notify.messaging.CommandHandler;
+import com.pedidos360.notify.messaging.PermanentProcessingException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -15,7 +17,7 @@ public class InvoiceGenerator implements CommandHandler {
 	public void handle(CommandEnvelope command) {
 		Map<String, Object> p = command.payload();
 		if (p == null || p.get("orderId") == null || p.get("total") == null) {
-			throw new IllegalArgumentException("Boleta sin pedido o sin total");
+			throw new PermanentProcessingException("Boleta sin pedido o sin total");
 		}
 		log.info("[BOLETA] pedido={} cliente={} <{}> total={} (eventId={})",
 				p.get("orderId"), p.get("customerName"), p.get("customerEmail"), p.get("total"), command.eventId());

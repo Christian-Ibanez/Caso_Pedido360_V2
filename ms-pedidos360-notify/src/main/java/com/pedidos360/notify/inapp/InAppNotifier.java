@@ -1,7 +1,7 @@
-package com.pedidos360.notify.handler;
+package com.pedidos360.notify.inapp;
 
-import com.pedidos360.notify.consumer.CommandEnvelope;
-import com.pedidos360.notify.inapp.NotificationService;
+import com.pedidos360.notify.messaging.CommandEnvelope;
+import com.pedidos360.notify.messaging.CommandHandler;
 import org.springframework.stereotype.Component;
 
 /**
