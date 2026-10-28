@@ -34,17 +34,20 @@ public class ServicesProxyController {
 			@Value("${app.services.orders-url}") String ordersUrl,
 			@Value("${app.services.catalog-url}") String catalogUrl,
 			@Value("${app.services.report-url}") String reportUrl,
-			@Value("${app.services.audit-url}") String auditUrl) {
+			@Value("${app.services.audit-url}") String auditUrl,
+			@Value("${app.services.notify-url}") String notifyUrl) {
 		this.client = servicesClient;
 		this.targets = Map.of(
 				"orders", ordersUrl,
 				"catalog", catalogUrl,
 				"report", reportUrl,
-				"audit", auditUrl);
+				"audit", auditUrl,
+				"notifications", notifyUrl);
 	}
 
 	@RequestMapping(
-			path = { "/api/orders", "/api/orders/**", "/api/catalog", "/api/catalog/**", "/api/report", "/api/report/**", "/api/audit", "/api/audit/**" },
+			path = { "/api/orders", "/api/orders/**", "/api/catalog", "/api/catalog/**", "/api/report", "/api/report/**", "/api/audit", "/api/audit/**",
+					"/api/notifications", "/api/notifications/**" },
 			method = { RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.DELETE })
 	public ResponseEntity<byte[]> proxy(HttpServletRequest request, @RequestBody(required = false) byte[] body,
 			@AuthenticationPrincipal Jwt jwt) throws IOException {
@@ -64,9 +67,15 @@ public class ServicesProxyController {
 			spec.header("Authorization", authHeader);
 		}
 		if (jwt != null) {
-			spec.header("X-User", Optional.ofNullable(jwt.getClaimAsString("preferred_username"))
+			String user = Optional.ofNullable(jwt.getClaimAsString("preferred_username"))
 					.or(() -> Optional.ofNullable(jwt.getClaimAsString("email")))
-					.orElse(jwt.getSubject()));
+					.or(() -> Optional.ofNullable(jwt.getClaimAsString("upn")))
+					.orElse(jwt.getSubject());
+			spec.header("X-User", user);
+			// Quien consulta la campana (ms-notify filtra por correo y por rol); se arma solo desde el JWT
+			spec.header("X-User-Email", user == null ? "" : user.toLowerCase(java.util.Locale.ROOT));
+			java.util.List<String> roles = jwt.getClaimAsStringList("roles");
+			spec.header("X-User-Roles", roles == null ? "" : String.join(",", roles));
 		}
 		spec.header("X-Forwarded-For", Optional.ofNullable(request.getHeader("X-Forwarded-For"))
 				.map(xff -> xff + ", " + request.getRemoteAddr())

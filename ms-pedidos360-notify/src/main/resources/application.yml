@@ -4,6 +4,12 @@ server:
 spring:
   application:
     name: ms-pedidos360-notify
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:local}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: update
   # RabbitMQ (ec2-mq): nodos del cluster separados por coma
   rabbitmq:
     addresses: ${RABBITMQ_ADDRESSES:localhost:5672}
@@ -21,3 +27,25 @@ management:
     web:
       exposure:
         include: health,info,metrics
+
+---
+# Desarrollo local y tests: H2 en memoria
+spring:
+  config:
+    activate:
+      on-profile: local
+  datasource:
+    url: jdbc:h2:mem:notifydb;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+
+---
+# Oracle: contenedor del compose (FREEPDB1), mismo usuario que los otros micros (tabla P360_NOTIFICATIONS)
+spring:
+  config:
+    activate:
+      on-profile: oracle
+  datasource:
+    url: ${DB_URL:jdbc:oracle:thin:@//localhost:1521/FREEPDB1}
+    username: ${DB_USERNAME:pedidos360}
+    password: ${DB_PASSWORD:pedidos360}

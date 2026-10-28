@@ -8,6 +8,8 @@ import com.pedidos360.orders.messaging.OrderMessagingListener;
 import com.pedidos360.orders.messaging.RequestMetadata;
 import com.pedidos360.orders.model.OrderStatus;
 import org.junit.jupiter.api.Test;
+import java.util.Map;
+import static org.assertj.core.api.Assertions.assertThat;
 import org.springframework.amqp.core.MessagePostProcessor;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -50,6 +52,22 @@ class OrderMessagingListenerTest {
 		verifyNoInteractions(kafka);
 		verify(rabbit).convertAndSend(eq(MessagingTopology.CMD_DIRECT), eq(MessagingTopology.RK_EMAIL), any(Object.class), any(MessagePostProcessor.class));
 		verify(rabbit).convertAndSend(eq(MessagingTopology.CMD_DIRECT), eq(MessagingTopology.RK_KITCHEN), any(Object.class), any(MessagePostProcessor.class));
+		verify(rabbit).convertAndSend(eq(MessagingTopology.CMD_DIRECT), eq(MessagingTopology.RK_INAPP), any(Object.class), any(MessagePostProcessor.class));
+	}
+
+	@Test
+	void pedidoNuevoNotificaAlAdministradorYAlConfirmarAlCliente() {
+		OrderResponse creado = new OrderResponse(8L, 1L, "Ana", "ana@mail.com", null, null, OrderStatus.CREADO,
+				new BigDecimal("12500"), List.of(), LocalDateTime.now(), LocalDateTime.now(), null, null, null);
+		Map<String, Object> admin = OrderMessagingListener.inAppPayload(
+				OrderEvent.of(OrderEvent.CREATED, null, creado, new RequestMetadata("ana@mail.com", "10.0.0.7", "t", "c")));
+		assertThat(admin).containsEntry("audience", "ADMIN").containsEntry("orderId", 8L);
+		assertThat(admin.get("recipient")).isNull();
+		assertThat((String) admin.get("body")).contains("$12.500");
+
+		Map<String, Object> cliente = OrderMessagingListener.inAppPayload(aceptado());
+		assertThat(cliente).containsEntry("audience", "CUSTOMER").containsEntry("recipient", "ana@mail.com");
+		assertThat((String) cliente.get("title")).isEqualTo("Tu pedido #7 está en proceso");
 	}
 
 	@Test

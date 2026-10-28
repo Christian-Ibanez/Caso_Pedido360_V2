@@ -80,7 +80,7 @@ export default function AdminHome() {
     <>
       <PageHead eyebrow={`${longToday()} · ${fmtTime(today)}`} title="Operación de hoy">
         <Link to="/catalog" state={{ create: true }} className="btn">Nuevo producto</Link>
-        <Link to="/orders" state={{ tab: 'NUEVOS' }} className="btn primary">Ver pedidos por aceptar</Link>
+        <Link to="/orders" state={{ tab: 'NUEVOS' }} className="btn primary">Ver pedidos por confirmar</Link>
       </PageHead>
 
       {error && <Alert>{error.message}</Alert>}
@@ -97,10 +97,10 @@ export default function AdminHome() {
         <div className="kpi">
           <div className="kpi-label">Pedidos en curso</div>
           <div className="kpi-value">{loading ? '—' : inProgress.length}</div>
-          <div className="kpi-foot">{count('ACEPTADO')} aceptados · {count('EN_PREPARACION')} en preparación · {count('DESPACHADO')} en camino</div>
+          <div className="kpi-foot">{count('ACEPTADO')} confirmados · {count('EN_PREPARACION')} en preparación · {count('DESPACHADO')} en camino</div>
         </div>
         <div className="kpi accent">
-          <div className="kpi-label">Esperando aceptación</div>
+          <div className="kpi-label">Esperando confirmación</div>
           <div className="kpi-value">{loading ? '—' : pending.length}</div>
           <div className="kpi-foot">{oldest ? `El más antiguo espera ${fmtAgo(oldest.createdAt)}` : 'Nada pendiente'}</div>
         </div>
@@ -114,7 +114,7 @@ export default function AdminHome() {
       <div className="row">
         <section className="card card-pad col-main" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <div className="card-head" style={{ marginBottom: 6 }}>
-            <h2 className="card-title">Pedidos por aceptar</h2>
+            <h2 className="card-title">Pedidos por confirmar</h2>
             <Link to="/orders" state={{ tab: 'NUEVOS' }} className="card-link">Ver todos</Link>
           </div>
           {pending.slice(0, 5).map((o) => (
@@ -131,12 +131,12 @@ export default function AdminHome() {
               {isStaff && (
                 <div className="actions" style={{ gap: 8 }}>
                   <button type="button" className="btn sm" disabled={busy[orderId(o)]} onClick={() => act(o, 'CANCELADO')}>Rechazar</button>
-                  <button type="button" className="btn sm primary" disabled={busy[orderId(o)]} onClick={() => act(o, 'ACEPTADO')}>Aceptar</button>
+                  <button type="button" className="btn sm primary" disabled={busy[orderId(o)]} onClick={() => act(o, 'ACEPTADO')}>Confirmar</button>
                 </div>
               )}
             </div>
           ))}
-          {!loading && pending.length === 0 && <p className="muted" style={{ margin: '8px 0' }}>No hay pedidos esperando aceptación.</p>}
+          {!loading && pending.length === 0 && <p className="muted" style={{ margin: '8px 0' }}>No hay pedidos esperando confirmación.</p>}
         </section>
 
         <section className="card card-pad col-side stack">

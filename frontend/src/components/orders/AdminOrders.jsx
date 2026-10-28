@@ -105,7 +105,7 @@ export default function AdminOrders() {
 
   return (
     <>
-      <PageHead title="Gestión de pedidos" subtitle="Acepta, avanza o cancela pedidos. Cada cambio avisa al cliente y a la cocina.">
+      <PageHead title="Gestión de pedidos" subtitle="Confirma, avanza o cancela pedidos. Cada cambio avisa al cliente y a la cocina.">
         <button type="button" className="btn" onClick={refresh}><IconRefresh size={16} /> Actualizar</button>
         <button type="button" className="btn" onClick={exportCsv} disabled={rows.length === 0}><IconDownload /> Exportar CSV</button>
       </PageHead>

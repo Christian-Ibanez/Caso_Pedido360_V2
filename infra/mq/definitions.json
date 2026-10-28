@@ -75,6 +75,23 @@
       "durable": true,
       "auto_delete": false,
       "arguments": {}
+    },
+    {
+      "name": "q.notify.inapp",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-dead-letter-exchange": "cmd.dead.dlx",
+        "x-dead-letter-routing-key": "notify.inapp"
+      }
+    },
+    {
+      "name": "q.notify.inapp.dlq",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
     }
   ],
   "exchanges": [
@@ -177,6 +194,30 @@
       "destination": "q.cmd.invoice.dlq",
       "destination_type": "queue",
       "routing_key": "invoice.gen",
+      "arguments": {}
+    },
+    {
+      "source": "cmd.direct",
+      "vhost": "/",
+      "destination": "q.notify.inapp",
+      "destination_type": "queue",
+      "routing_key": "notify.inapp",
+      "arguments": {}
+    },
+    {
+      "source": "cmd.topic",
+      "vhost": "/",
+      "destination": "q.notify.inapp",
+      "destination_type": "queue",
+      "routing_key": "notify.#",
+      "arguments": {}
+    },
+    {
+      "source": "cmd.dead.dlx",
+      "vhost": "/",
+      "destination": "q.notify.inapp.dlq",
+      "destination_type": "queue",
+      "routing_key": "notify.inapp",
       "arguments": {}
     }
   ]

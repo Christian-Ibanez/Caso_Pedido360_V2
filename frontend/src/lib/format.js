@@ -79,8 +79,8 @@ export function longToday() {
 export const FLOW = ['CREADO', 'ACEPTADO', 'EN_PREPARACION', 'DESPACHADO', 'ENTREGADO'];
 
 export const STATUS_LABEL = {
-  CREADO: 'Creado',
-  ACEPTADO: 'Aceptado',
+  CREADO: 'Pendiente',
+  ACEPTADO: 'En proceso',
   EN_PREPARACION: 'En preparación',
   DESPACHADO: 'Despachado',
   ENTREGADO: 'Entregado',
@@ -88,8 +88,8 @@ export const STATUS_LABEL = {
 };
 
 export const STATUS_BADGE = {
-  CREADO: 'CREADO',
-  ACEPTADO: 'ACEPTADO',
+  CREADO: 'PENDIENTE',
+  ACEPTADO: 'EN PROCESO',
   EN_PREPARACION: 'EN PREPARACIÓN',
   DESPACHADO: 'DESPACHADO',
   ENTREGADO: 'ENTREGADO',
@@ -114,7 +114,7 @@ export const NEXT_STATUS = {
 };
 
 export const NEXT_ACTION = {
-  CREADO: 'Aceptar',
+  CREADO: 'Confirmar',
   ACEPTADO: 'Preparar',
   EN_PREPARACION: 'Despachar',
   DESPACHADO: 'Entregar',
@@ -137,7 +137,7 @@ export function inStatusGroup(status, group) {
 
 export const STATUS_GROUPS = [
   { id: 'TODOS', label: 'Todos' },
-  { id: 'NUEVOS', label: 'Nuevos' },
+  { id: 'NUEVOS', label: 'Pendientes' },
   { id: 'PROCESO', label: 'En proceso' },
   { id: 'COMPLETADOS', label: 'Completados' },
   { id: 'CANCELADOS', label: 'Cancelados' },

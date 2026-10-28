@@ -58,7 +58,7 @@ export default function CustomerOrders() {
     setFormOpen(false);
     await reload({ silent: true });
     if (created) setSelected(orderId(created));
-    setNotice(created ? `Recibimos tu pedido #${orderId(created)}. Te avisaremos por correo cuando lo acepten.` : 'Pedido creado.');
+    setNotice(created ? `Recibimos tu pedido #${orderId(created)}. Te avisaremos aquí y por correo cuando lo confirmen.` : 'Pedido creado.');
   };
 
   return (
@@ -159,7 +159,7 @@ export default function CustomerOrders() {
             )}
             <div>
               <h3 className="section-label">Notificaciones</h3>
-              <OrderNotifications order={current} />
+              <OrderNotifications order={current} live />
             </div>
             {current.status === 'CREADO' && (
               <button type="button" className="btn danger" onClick={cancel} disabled={cancelling}>

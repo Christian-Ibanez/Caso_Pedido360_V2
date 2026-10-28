@@ -8,7 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Topologia del caso: 3 flujos (email, cocina, boleta), cada uno con cola principal + DLQ,
+ * Topologia del caso: 4 flujos (email, cocina, boleta y notificaciones de la campana), cada uno con cola principal + DLQ,
  * exchanges cmd.direct (routing exacto), cmd.topic (patrones) y cmd.dead.dlx (cartas muertas).
  * Es la misma que carga infra/mq/definitions.json; declararla aqui es idempotente y permite levantar el micro
  * contra un RabbitMQ vacio.
@@ -23,6 +23,8 @@ public class RabbitTopology {
 	public static final String Q_EMAIL = "q.cmd.email";
 	public static final String Q_KITCHEN = "q.cmd.kitchen";
 	public static final String Q_INVOICE = "q.cmd.invoice";
+	/** Notificaciones de la campana (pedido nuevo -> admin, en proceso -> cliente). */
+	public static final String Q_INAPP = "q.notify.inapp";
 	public static final String DLQ_SUFFIX = ".dlq";
 
 	/**
@@ -36,7 +38,8 @@ public class RabbitTopology {
 	private static final List<Flow> FLOWS = List.of(
 			new Flow(Q_EMAIL, "email.send", "email.#"),
 			new Flow(Q_KITCHEN, "kitchen.ticket", "kitchen.#"),
-			new Flow(Q_INVOICE, "invoice.gen", "invoice.#"));
+			new Flow(Q_INVOICE, "invoice.gen", "invoice.#"),
+			new Flow(Q_INAPP, "notify.inapp", "notify.#"));
 
 	@Bean
 	Declarables commandTopology() {

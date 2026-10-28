@@ -1,5 +1,7 @@
-import { FLOW, STATUS_LABEL, statusTimes, fmtTime, clp, orderTotal } from '../../lib/format';
-import { IconCheck, IconMail } from '../Icons';
+import { useEffect, useState } from 'react';
+import { FLOW, STATUS_LABEL, statusTimes, fmtTime, clp, orderTotal, toDate } from '../../lib/format';
+import { subscribeNotifications } from '../../lib/notifications';
+import { IconCheck, IconMail, IconBell } from '../Icons';
 
 /** Avance horizontal Creado → Entregado (tarjeta "Tu pedido en curso"). */
 export function OrderProgress({ order }) {
@@ -87,21 +89,35 @@ export function OrderLines({ order, byId }) {
 }
 
 /**
- * Avisos que el cliente recibe en cada etapa (los envía ms-notify a través de RabbitMQ:
- * correo, ticket de cocina y boleta).
+ * Avisos que el cliente recibe en cada etapa. Todos salen de ms-notify a través de RabbitMQ:
+ * correo, ticket de cocina, boleta y el aviso en la campana de la app.
+ * Con `live` se muestran los avisos reales de la campana del usuario para este pedido.
  */
-export function OrderNotifications({ order }) {
+export function OrderNotifications({ order, live = false }) {
+  const [inbox, setInbox] = useState(null);
+  useEffect(() => (live ? subscribeNotifications(setInbox) : undefined), [live]);
+
   const times = statusTimes(order);
   const status = order?.status;
-  const notes = [{ text: 'Te enviamos un correo de confirmación', time: times.CREADO }];
-  if (times.ACEPTADO) notes.push({ text: 'La cocina recibió tu pedido', time: times.ACEPTADO });
-  if (status === 'ENTREGADO') notes.push({ text: 'Boleta electrónica enviada a tu correo', time: times.ENTREGADO });
-  if (status === 'CANCELADO') notes.push({ text: 'Te avisamos por correo la cancelación', time: times.CANCELADO });
+  const id = order?.id ?? order?.orderId;
+  const notes = [{ text: 'Te enviamos un correo de confirmación', time: times.CREADO, kind: 'mail' }];
+  if (times.ACEPTADO) notes.push({ text: 'La cocina recibió tu pedido', time: times.ACEPTADO, kind: 'mail' });
+  if (status === 'ENTREGADO') notes.push({ text: 'Boleta electrónica enviada a tu correo', time: times.ENTREGADO, kind: 'mail' });
+  if (status === 'CANCELADO') notes.push({ text: 'Te avisamos por correo la cancelación', time: times.CANCELADO, kind: 'mail' });
+
+  const real = (inbox?.items || []).filter((n) => n.audience === 'CUSTOMER' && String(n.orderId) === String(id));
+  if (real.length > 0) {
+    real.forEach((n) => notes.push({ text: n.title, time: n.createdAt, kind: 'app', key: `app-${n.id}` }));
+  } else if (times.ACEPTADO) {
+    notes.push({ text: 'Aviso en la app: tu pedido está en proceso', time: times.ACEPTADO, kind: 'app' });
+  }
+  notes.sort((a, b) => (toDate(a.time)?.getTime() || 0) - (toDate(b.time)?.getTime() || 0));
+
   return (
     <div className="notes">
       {notes.map((n) => (
-        <div className="note" key={n.text}>
-          <IconMail />
+        <div className="note" key={n.key || n.text}>
+          {n.kind === 'app' ? <IconBell /> : <IconMail />}
           <span className="grow">{n.text}</span>
           <span className="subtle num">{n.time ? fmtTime(n.time) : ''}</span>
         </div>

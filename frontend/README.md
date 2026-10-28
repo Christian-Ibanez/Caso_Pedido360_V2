@@ -83,11 +83,20 @@ La interfaz cambia según el rol que entrega Entra ID en el token (`roles`):
 
 | Vista | Cliente (sin rol) | Admin / Operator | Auditor |
 |---|---|---|---|
-| **Inicio** | Pedido en curso con su avance, últimos pedidos y productos recomendados | Operación del día: ventas, pedidos por aceptar (aceptar/rechazar), ventas de 7 días, stock por reponer y pedidos por estado | Igual que Admin, sin acciones |
-| **Pedidos** | Mis pedidos con detalle lateral (seguimiento, productos, notificaciones) y cancelación mientras está en Creado | Gestión con botón del siguiente estado (Aceptar → Preparar → Despachar → Entregar), cancelación, acciones masivas, exportar CSV y detalle con registro de auditoría | – |
+| **Inicio** | Pedido en curso con su avance, últimos pedidos y productos recomendados | Operación del día: ventas, pedidos pendientes (confirmar/rechazar), ventas de 7 días, stock por reponer y pedidos por estado | Igual que Admin, sin acciones |
+| **Pedidos** | Mis pedidos con detalle lateral (seguimiento, productos, notificaciones) y cancelación mientras está Pendiente | Gestión con botón del siguiente estado (Confirmar → Preparar → Despachar → Entregar), cancelación, acciones masivas, exportar CSV y detalle con registro de auditoría | – |
 | **Catálogo** | Tarjetas con foto, filtros por categoría, carrito con botones − / + y "Continuar" al nuevo pedido | (Admin) tabla con stock − / +, interruptor de activo, edición en panel lateral, alta y eliminación | Catálogo de solo lectura |
 | **Reportería** | – | (Admin) ventas, ticket promedio, ventas por hora, más vendidos, tiempo de entrega y pedidos activos | – |
 | **Auditoría** | – | (Admin) eventos por tipo, usuario y pedido, con el evento original | Igual que Admin |
+
+### Campana de notificaciones
+
+Arriba a la derecha de todas las vistas hay una campana con el número de avisos sin leer. Los avisos viajan por RabbitMQ: ms-orders publica un comando `InAppNotify` en `cmd.direct` (`notify.inapp`), ms-notify lo consume desde `q.notify.inapp`, lo guarda y el BFF lo entrega en `/api/notifications` solo a quien corresponde (según el correo y los roles del token).
+
+- Cuando un cliente hace un pedido (estado **Pendiente**), Admin y Operador reciben "Nuevo pedido #N".
+- Cuando Admin u Operador lo confirman, el pedido pasa a **En proceso** y el cliente recibe "Tu pedido #N está en proceso". También avisa al preparar, despachar, entregar o cancelar.
+
+El frontend consulta la bandeja cada 10 s; si llega algo nuevo muestra un aviso emergente y refresca la lista de pedidos. Al tocar un aviso se abre ese pedido.
 
 Reportería y Auditoría dependen de Kafka. Si su servicio no responde (o tarda más de 12 s), la vista muestra **"no disponible"** con un botón para reintentar en vez de quedarse cargando.
 
@@ -104,10 +113,10 @@ Créditos: las fotos de PAS-002, PAS-003, PAS-004 y PAS-005 fueron aportadas por
 ## 📂 Estructura Principal del Proyecto
 
 - `src/auth/`: configuración de MSAL (`authConfig.js`) y lectura del token.
-- `src/api/`: cliente HTTP (`http.js`, agrega el token y corta a los 12 s) y llamadas a pedidos, catálogo, reportería y auditoría.
+- `src/api/`: cliente HTTP (`http.js`, agrega el token y corta a los 12 s) y llamadas a pedidos, catálogo, notificaciones, reportería y auditoría.
 - `src/hooks/`: `useRoles` (roles del token) y `useData` (catálogo y pedidos).
-- `src/lib/`: formatos (CLP, fechas, estados), categorías/fotos del catálogo y el carrito.
-- `src/components/`: `Layout` (menú lateral), vistas por módulo y sus piezas (`home/`, `orders/`, `catalog/`).
+- `src/lib/`: formatos (CLP, fechas, estados), categorías/fotos del catálogo, el carrito y el sondeo de la campana (`notifications.js`).
+- `src/components/`: `Layout` (menú lateral), `NotificationBell` (campana y avisos), vistas por módulo y sus piezas (`home/`, `orders/`, `catalog/`).
 - `src/styles.css`: sistema visual (colores, tarjetas, tablas, botones).
 - `public/products/`: fotos del catálogo.
 - `vite.config.js`: puerto fijo `5173` y la entrada adicional `redirect.html` que usa MSAL.

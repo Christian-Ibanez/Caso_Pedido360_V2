@@ -9,7 +9,7 @@ Tres instancias EC2, un `compose.yml` por instancia. El frontend corre en el equ
 | `ec2-bff` | `infra/bff` | BFF (valida el JWT de Entra ID y enruta a los micros) | t3.medium |
 | (local) | `frontend` | React + MSAL con `npm run dev` en `http://localhost:5173` | – |
 
-Flujo: `frontend local (MSAL / Entra ID) -> BFF :8080 en ec2-bff (valida JWT + rol) -> orders/catalog en ec2-apps (IP privada) -> RabbitMQ en ec2-mq -> notify`.
+Flujo: `frontend local (MSAL / Entra ID) -> BFF :8080 en ec2-bff (valida JWT + rol) -> orders/catalog/notify en ec2-apps (IP privada) -> RabbitMQ en ec2-mq -> notify`.
 
 **Kafka no está desplegado.** `orders` corre con `KAFKA_ENABLED=false`: los comandos a RabbitMQ salen igual y solo se omite el evento en `orders.events`. `audit` y `report` (consumidores de Kafka) quedan fuera; se levantan con el perfil `kafka` de `infra/apps` cuando exista una instancia con `infra/kafka` (ver sección 7).
 
@@ -70,7 +70,7 @@ La IP pública cambia cada vez que la instancia se detiene; las privadas (las de
 | SG | Entrada | Origen |
 |---|---|---|
 | `p360-bff` | 8080 (BFF) | 0.0.0.0/0 (el navegador del usuario llama directo al BFF) |
-| `p360-apps` | 8081-8082 (orders, catalog) | `p360-bff` |
+| `p360-apps` | 8081-8083 (orders, catalog, notify) | `p360-bff` |
 | `p360-apps` | 8081-8086 (Swagger/pruebas) | solo tu IP |
 | `p360-apps` | 1521 (Oracle, SQL Developer) | solo tu IP |
 | `p360-mq` | 5672-5673 (AMQP) | `p360-apps` |
@@ -99,7 +99,7 @@ Si se quiere un HTTP API delante del BFF: authorizer JWT con issuer `https://log
 | catalog | 8082 | `GET /api/catalog/products?q=&category=&onlyActive=`, `GET /api/catalog/products/{id}` | autenticado |
 | catalog | 8082 | `POST /api/catalog/products`, `PUT /api/catalog/products/{id}` (precio/stock, parcial), `DELETE /api/catalog/products/{id}` | Admin |
 | catalog | 8082 | `POST /api/catalog/products/stock/decrease` y `/increase` | solo interno (orders); el BFF los bloquea |
-| notify | 8083 | sin API pública (consumidor RabbitMQ; `/actuator/health`, `/actuator/metrics/pedidos360.dlq.messages`) | – |
+| notify | 8083 | `GET /api/notifications`, `POST /api/notifications/{id}/read`, `POST /api/notifications/read-all` (campana; el BFF agrega `X-User-Email` y `X-User-Roles` desde el JWT). Además consume RabbitMQ; `/actuator/health`, `/actuator/metrics/pedidos360.dlq.messages` | autenticado (cada usuario ve las suyas) |
 | audit (requiere Kafka) | 8084 | `GET /api/audit/events?user=&type=&orderId=&from=&to=&limit=`, `GET /api/audit/events/{id}`, `GET /api/audit/orders/{orderId}/timeline`, `GET /api/audit/event-types`, `GET /api/audit/actors` | Admin, Auditor |
 | report (requiere Kafka) | 8086 | `GET /api/report/kpis?range=last24h`, `GET /api/report/top-products?range=last7d&limit=5`, `GET /api/report/sales-by-hour?range=`, `GET /api/report/lead-time?range=` | Admin |
 
@@ -119,14 +119,15 @@ La publicación ocurre después del commit y en un hilo aparte: si Kafka o Rabbi
 
 | Exchange | Tipo | Cola | Binding |
 |---|---|---|---|
-| cmd.direct | direct | q.cmd.email / q.cmd.kitchen / q.cmd.invoice | email.send / kitchen.ticket / invoice.gen |
-| cmd.topic | topic | q.cmd.email / q.cmd.kitchen / q.cmd.invoice | email.# / kitchen.# / invoice.# |
-| cmd.dead.dlx | direct | q.cmd.email.dlq / q.cmd.kitchen.dlq / q.cmd.invoice.dlq | email.send / kitchen.ticket / invoice.gen |
+| cmd.direct | direct | q.cmd.email / q.cmd.kitchen / q.cmd.invoice / q.notify.inapp | email.send / kitchen.ticket / invoice.gen / notify.inapp |
+| cmd.topic | topic | q.cmd.email / q.cmd.kitchen / q.cmd.invoice / q.notify.inapp | email.# / kitchen.# / invoice.# / notify.# |
+| cmd.dead.dlx | direct | q.cmd.email.dlq / q.cmd.kitchen.dlq / q.cmd.invoice.dlq / q.notify.inapp.dlq | email.send / kitchen.ticket / invoice.gen / notify.inapp |
 
 - En AMQP `*` es exactamente una palabra, así que `email.*` no recibe `email.send.high` (el ejemplo del enunciado); por eso se usa `#`.
 - Envelope común: `type, eventId, timestamp, traceId, correlationId, payload`.
-- notify hace ACK/NACK explícito; al fallar hace `basicNack(requeue=false)` y RabbitMQ lo manda por `cmd.dead.dlx` a la DLQ. notify escucha las 3 DLQ, registra cola de origen, motivo, cantidad y cuerpo, y suma la métrica `pedidos360.dlq.messages{queue}`.
+- notify hace ACK/NACK explícito; al fallar hace `basicNack(requeue=false)` y RabbitMQ lo manda por `cmd.dead.dlx` a la DLQ. notify escucha las 4 DLQ, registra cola de origen, motivo, cantidad y cuerpo, y suma la métrica `pedidos360.dlq.messages{queue}`.
 - Idempotencia: notify recuerda los `eventId` procesados y hace ACK sin reenviar los duplicados.
+- **Campana de notificaciones** (comando `InAppNotify` por `notify.inapp` -> `q.notify.inapp`): cuando un cliente crea un pedido, orders avisa a los administradores ("Nuevo pedido #N"); cuando el administrador lo confirma (CREADO -> ACEPTADO, en proceso) el cliente recibe "Tu pedido #N está en proceso", y luego un aviso por cada cambio de estado. notify las guarda en `P360_NOTIFICATIONS` (eventId único) y el frontend las consulta cada 10 s a través del BFF.
 - **Demo de DLQ**: crear un pedido con `customerEmail` que termine en `@fail.test`.
 
 ## 7. Kafka (no desplegado por ahora)

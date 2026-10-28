@@ -56,7 +56,7 @@ export default function CustomerHome() {
         <div className="kpi">
           <div className="kpi-label">Pedidos en curso</div>
           <div className="kpi-value">{loading ? '—' : active.length}</div>
-          <div className="kpi-foot">{active.filter((o) => o.status === 'CREADO').length} esperando aceptación</div>
+          <div className="kpi-foot">{active.filter((o) => o.status === 'CREADO').length} esperando confirmación</div>
         </div>
         <div className="kpi">
           <div className="kpi-label">Total comprado</div>
