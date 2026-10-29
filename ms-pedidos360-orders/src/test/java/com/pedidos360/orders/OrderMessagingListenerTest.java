@@ -32,6 +32,11 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.never;
+import org.mockito.ArgumentCaptor;
+import org.springframework.amqp.core.Message;
+import org.springframework.amqp.core.MessageProperties;
+import com.pedidos360.orders.messaging.EmailRecipientCheck;
 
 /** Con app.kafka.enabled=false los comandos siguen saliendo por RabbitMQ y no se toca Kafka. */
 class OrderMessagingListenerTest {
@@ -43,7 +48,11 @@ class OrderMessagingListenerTest {
 	private final OrderMessagingListener listener = new OrderMessagingListener(kafka, rabbit, new ObjectMapper().findAndRegisterModules(), unsent);
 
 	private OrderEvent aceptado() {
-		OrderResponse order = new OrderResponse(7L, 1L, "Ana", "ana@mail.com", null, null, OrderStatus.ACEPTADO,
+		return aceptado("ana@mail.com");
+	}
+
+	private OrderEvent aceptado(String email) {
+		OrderResponse order = new OrderResponse(7L, 1L, "Ana", email, null, null, OrderStatus.ACEPTADO,
 				new BigDecimal("3000"), List.of(), LocalDateTime.now(), LocalDateTime.now(), LocalDateTime.now(), null, null);
 		return OrderEvent.of("OrderAccepted", OrderStatus.CREADO, order, new RequestMetadata("ana@mail.com", "10.0.0.7", "t", "c"));
 	}
@@ -98,5 +107,34 @@ class OrderMessagingListenerTest {
 
 		verify(unsent, atLeastOnce()).recordFailure(eq(MessagingConfig.CMD_DIRECT), eq(MessagingConfig.RK_INAPP),
 				any(Command.class), any(Exception.class));
+	}
+
+	@Test
+	void correoRechazadoVaDirectoALaDlqSinPasarPorLaColaDeCorreos() throws Exception {
+		ReflectionTestUtils.setField(listener, "enabled", true);
+		ReflectionTestUtils.setField(listener, "kafkaEnabled", false);
+
+		listener.on(aceptado("cliente@fail.test"));
+
+		// cmd.dead.dlx + email.send -> q.cmd.email.dlq; nunca a cmd.direct/email.send (q.cmd.email)
+		ArgumentCaptor<MessagePostProcessor> post = ArgumentCaptor.forClass(MessagePostProcessor.class);
+		verify(rabbit).convertAndSend(eq(MessagingConfig.CMD_DLX), eq(MessagingConfig.RK_EMAIL), any(Object.class), post.capture());
+		verify(rabbit, never()).convertAndSend(eq(MessagingConfig.CMD_DIRECT), eq(MessagingConfig.RK_EMAIL), any(Object.class), any(MessagePostProcessor.class));
+		// el resto del pedido sigue su camino normal
+		verify(rabbit).convertAndSend(eq(MessagingConfig.CMD_DIRECT), eq(MessagingConfig.RK_KITCHEN), any(Object.class), any(MessagePostProcessor.class));
+
+		Message msg = post.getValue().postProcessMessage(new Message(new byte[0], new MessageProperties()));
+		assertThat((String) msg.getMessageProperties().getHeader("x-error-reason")).contains("cliente@fail.test");
+		assertThat((String) msg.getMessageProperties().getHeader("x-original-queue")).isEqualTo("q.cmd.email");
+	}
+
+	@Test
+	void validaElDestinatarioDelCorreo() {
+		assertThat(EmailRecipientCheck.rejectionReason("ana@mail.com")).isEmpty();
+		assertThat(EmailRecipientCheck.rejectionReason("cliente@retry.test")).isEmpty();
+		assertThat(EmailRecipientCheck.rejectionReason("cliente@fail.test")).isPresent();
+		assertThat(EmailRecipientCheck.rejectionReason("")).isPresent();
+		assertThat(EmailRecipientCheck.rejectionReason(null)).isPresent();
+		assertThat(EmailRecipientCheck.rejectionReason("sin-arroba")).isPresent();
 	}
 }

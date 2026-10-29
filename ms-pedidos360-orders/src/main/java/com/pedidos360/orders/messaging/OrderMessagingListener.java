@@ -18,6 +18,7 @@ import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Publica despues del commit y en otro hilo: si Kafka o RabbitMQ estan caidos el pedido igual queda guardado
@@ -81,11 +82,16 @@ public class OrderMessagingListener {
 		}
 		OrderResponse order = event.order();
 
-		// Cancelaciones salen como prioritarias por el exchange topic (email.# -> q.cmd.email)
-		if (event.status() == OrderStatus.CANCELADO) {
-			send(MessagingConfig.CMD_TOPIC, MessagingConfig.RK_EMAIL_HIGH, Command.of("EmailSend", event, emailPayload(event)));
+		// Correo invalido o rechazado: error de datos, va directo a q.cmd.email.dlq sin pasar por q.cmd.email.
+		// Cancelaciones salen como prioritarias por el exchange topic (email.# -> q.cmd.email).
+		Command email = Command.of("EmailSend", event, emailPayload(event));
+		Optional<String> rejected = EmailRecipientCheck.rejectionReason(order.customerEmail());
+		if (rejected.isPresent()) {
+			sendToDeadLetter(MessagingConfig.Q_EMAIL, MessagingConfig.RK_EMAIL, email, rejected.get());
+		} else if (event.status() == OrderStatus.CANCELADO) {
+			send(MessagingConfig.CMD_TOPIC, MessagingConfig.RK_EMAIL_HIGH, email);
 		} else {
-			send(MessagingConfig.CMD_DIRECT, MessagingConfig.RK_EMAIL, Command.of("EmailSend", event, emailPayload(event)));
+			send(MessagingConfig.CMD_DIRECT, MessagingConfig.RK_EMAIL, email);
 		}
 
 		if (event.status() == OrderStatus.ACEPTADO) {
@@ -190,7 +196,27 @@ public class OrderMessagingListener {
 		return payload;
 	}
 
+	/**
+	 * Publica el comando directo en cmd.dead.dlx con la routing key de su flujo, asi RabbitMQ lo deja en la DLQ
+	 * (por ejemplo email.send -> q.cmd.email.dlq) sin pasar por la cola de trabajo. Los headers dicen por que y
+	 * a que cola iba; queda registrado en el log con [DLQ].
+	 */
+	private void sendToDeadLetter(String originalQueue, String routingKey, Command command, String reason) {
+		log.error("[DLQ] {} del pedido {} no se envia a {}: {} -> {}.dlq (eventId={})", command.type(),
+				command.payload().get("orderId"), originalQueue, reason, originalQueue, command.eventId());
+		Map<String, Object> headers = new LinkedHashMap<>();
+		headers.put("x-error-reason", reason);
+		headers.put("x-original-queue", originalQueue);
+		headers.put("x-original-routing-key", routingKey);
+		headers.put("x-rejected-by", "ms-pedidos360-orders");
+		send(MessagingConfig.CMD_DLX, routingKey, command, headers);
+	}
+
 	private void send(String exchange, String routingKey, Command command) {
+		send(exchange, routingKey, command, Map.of());
+	}
+
+	private void send(String exchange, String routingKey, Command command, Map<String, Object> headers) {
 		try {
 			rabbitTemplate.convertAndSend(exchange, routingKey, command, message -> {
 				message.getMessageProperties().setDeliveryMode(MessageDeliveryMode.PERSISTENT);
@@ -198,6 +224,7 @@ public class OrderMessagingListener {
 				message.getMessageProperties().setType(command.type());
 				message.getMessageProperties().setCorrelationId(command.correlationId());
 				message.getMessageProperties().setHeader("traceId", command.traceId());
+				headers.forEach(message.getMessageProperties()::setHeader);
 				return message;
 			});
 			log.info("RabbitMQ {} -> {} [{}] pedido {}", command.type(), exchange, routingKey, command.payload().get("orderId"));
