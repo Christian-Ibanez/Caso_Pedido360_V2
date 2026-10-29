@@ -18,6 +18,18 @@ export default function NotificationBell() {
 
   useEffect(() => subscribeNotifications(setInbox), []);
 
+  // Al cerrar la bandeja, lo que se alcanzó a ver queda como leído: el número de la campana desaparece.
+  // Mientras está abierta se mantienen los puntos de "sin leer" para distinguir las nuevas.
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (open) {
+      wasOpen.current = true;
+    } else if (wasOpen.current) {
+      wasOpen.current = false;
+      if (inbox.unread > 0) markAllRead();
+    }
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     const onNew = (e) => {
       const fresh = (e.detail || []).slice(0, 3);
@@ -54,7 +66,7 @@ export default function NotificationBell() {
       <div className="bell-wrap" ref={wrapRef}>
         <button type="button" className="bell" aria-label={label} aria-expanded={open} aria-haspopup="true" onClick={() => setOpen((o) => !o)}>
           <IconBell size={20} />
-          {inbox.unread > 0 && <span className="bell-badge" aria-hidden="true">{inbox.unread > 9 ? '9+' : inbox.unread}</span>}
+          {!open && inbox.unread > 0 && <span className="bell-badge" aria-hidden="true">{inbox.unread > 9 ? '9+' : inbox.unread}</span>}
         </button>
 
         {open && (
