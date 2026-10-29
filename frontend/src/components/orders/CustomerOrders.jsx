@@ -7,6 +7,7 @@ import {
 } from '../../lib/format';
 import { OrderTimeline, OrderLines, OrderNotifications, itemsSummary } from './OrderParts';
 import NewOrderForm from './NewOrderForm';
+import { isMine, rememberOwnOrder } from '../../lib/ownOrders';
 import { StatusBadge, Alert, PageHead } from '../ui';
 import { IconPlus, IconSearch } from '../Icons';
 
@@ -24,7 +25,7 @@ export default function CustomerOrders() {
   const [cancelling, setCancelling] = useState(false);
 
   const mine = useMemo(
-    () => sortByNewest(orders.filter((o) => (o.customerEmail || '').toLowerCase() === email)),
+    () => sortByNewest(orders.filter((o) => isMine(o, email, orderId(o)))),
     [orders, email],
   );
 
@@ -56,6 +57,7 @@ export default function CustomerOrders() {
 
   const onCreated = async (created) => {
     setFormOpen(false);
+    if (created) rememberOwnOrder(email, orderId(created));
     await reload({ silent: true });
     if (created) setSelected(orderId(created));
     setNotice(created ? `Recibimos tu pedido #${orderId(created)}. Te avisaremos aquí y por correo cuando lo confirmen.` : 'Pedido creado.');
@@ -76,7 +78,6 @@ export default function CustomerOrders() {
           byId={byId}
           defaultName={account?.name || ''}
           defaultEmail={email}
-          lockEmail
           onCancel={() => setFormOpen(false)}
           onCreated={onCreated}
         />

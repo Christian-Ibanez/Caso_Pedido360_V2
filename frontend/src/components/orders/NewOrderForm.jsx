@@ -9,7 +9,8 @@ import { IconMinus, IconPlus, IconTrash } from '../Icons';
 
 /**
  * Formulario de nuevo pedido. Parte con lo que el cliente dejó en el carrito del catálogo.
- * El correo del cliente queda fijo para el rol Cliente (los pedidos se filtran por correo).
+ * El correo parte con el de la cuenta, pero se puede cambiar (por ejemplo, para probar el manejo de errores de
+ * RabbitMQ con cliente@fail.test, @retry.test o @down.test). Si lockEmail es true queda fijo.
  */
 export default function NewOrderForm({ products, byId, defaultName, defaultEmail, lockEmail, onCancel, onCreated }) {
   const [cart, setLocalCart] = useState(() => getCart());
@@ -121,6 +122,11 @@ export default function NewOrderForm({ products, byId, defaultName, defaultEmail
           </label>
           <label className="field">Correo
             <input type="email" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} readOnly={lockEmail} required />
+            {!lockEmail && customerEmail.trim().toLowerCase() !== (defaultEmail || '').toLowerCase() && (
+              <span className="muted" style={{ fontSize: 12 }}>
+                El aviso y la boleta irán a este correo. Para probar errores: @fail.test, @retry.test o @down.test.
+              </span>
+            )}
           </label>
           <div className="form-grid two">
             <label className="field">Región
