@@ -138,20 +138,6 @@
       "durable": true,
       "auto_delete": false,
       "arguments": {}
-    },
-    {
-      "name": "q.audit.history",
-      "vhost": "/",
-      "durable": true,
-      "auto_delete": false,
-      "arguments": {}
-    },
-    {
-      "name": "q.audit.errors",
-      "vhost": "/",
-      "durable": true,
-      "auto_delete": false,
-      "arguments": {}
     }
   ],
   "exchanges": [
@@ -276,78 +262,6 @@
       "source": "cmd.dead.dlx",
       "vhost": "/",
       "destination": "q.notify.inapp.dlq",
-      "destination_type": "queue",
-      "routing_key": "notify.inapp",
-      "arguments": {}
-    },
-    {
-      "source": "cmd.direct",
-      "vhost": "/",
-      "destination": "q.audit.history",
-      "destination_type": "queue",
-      "routing_key": "email.send",
-      "arguments": {}
-    },
-    {
-      "source": "cmd.direct",
-      "vhost": "/",
-      "destination": "q.audit.history",
-      "destination_type": "queue",
-      "routing_key": "kitchen.ticket",
-      "arguments": {}
-    },
-    {
-      "source": "cmd.direct",
-      "vhost": "/",
-      "destination": "q.audit.history",
-      "destination_type": "queue",
-      "routing_key": "invoice.gen",
-      "arguments": {}
-    },
-    {
-      "source": "cmd.direct",
-      "vhost": "/",
-      "destination": "q.audit.history",
-      "destination_type": "queue",
-      "routing_key": "notify.inapp",
-      "arguments": {}
-    },
-    {
-      "source": "cmd.topic",
-      "vhost": "/",
-      "destination": "q.audit.history",
-      "destination_type": "queue",
-      "routing_key": "#",
-      "arguments": {}
-    },
-    {
-      "source": "cmd.dead.dlx",
-      "vhost": "/",
-      "destination": "q.audit.errors",
-      "destination_type": "queue",
-      "routing_key": "email.send",
-      "arguments": {}
-    },
-    {
-      "source": "cmd.dead.dlx",
-      "vhost": "/",
-      "destination": "q.audit.errors",
-      "destination_type": "queue",
-      "routing_key": "kitchen.ticket",
-      "arguments": {}
-    },
-    {
-      "source": "cmd.dead.dlx",
-      "vhost": "/",
-      "destination": "q.audit.errors",
-      "destination_type": "queue",
-      "routing_key": "invoice.gen",
-      "arguments": {}
-    },
-    {
-      "source": "cmd.dead.dlx",
-      "vhost": "/",
-      "destination": "q.audit.errors",
       "destination_type": "queue",
       "routing_key": "notify.inapp",
       "arguments": {}

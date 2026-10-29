@@ -2,7 +2,6 @@ package com.pedidos360.notify;
 
 import com.pedidos360.notify.email.EmailConsumer;
 import com.pedidos360.notify.kitchen.KitchenConsumer;
-import com.pedidos360.notify.messaging.DeadLetterConsumer;
 import com.rabbitmq.client.Channel;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.junit.jupiter.api.Test;
@@ -12,8 +11,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
 import java.nio.charset.StandardCharsets;
-import java.util.List;
-import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
@@ -33,9 +30,6 @@ class CommandConsumerTest {
 
 	@Autowired
 	KitchenConsumer kitchenConsumer;
-
-	@Autowired
-	DeadLetterConsumer deadLetterConsumer;
 
 	@Autowired
 	MeterRegistry meterRegistry;
@@ -82,16 +76,17 @@ class CommandConsumerTest {
 	}
 
 	@Test
-	void dlqSeRegistraYSeCuenta() throws Exception {
+	void envioALaDlqSeRegistraEnLaMetricaYElMensajeQuedaEnLaDlq() throws Exception {
 		Channel channel = mock(Channel.class);
-		Message dead = message(9, "evt-3", "cliente@fail.test");
-		dead.getMessageProperties().setConsumerQueue("q.cmd.email.dlq");
-		dead.getMessageProperties().setHeader("x-death",
-				List.of(Map.of("queue", "q.cmd.email", "reason", "rejected", "count", 1L)));
-		deadLetterConsumer.onDeadLetter(dead, channel);
+		double before = meterRegistry.counter("pedidos360.dlq.messages", "queue", "q.cmd.email.dlq").count();
 
-		verify(channel).basicAck(9, false);
-		assertThat(meterRegistry.counter("pedidos360.dlq.messages", "queue", "q.cmd.email.dlq").count()).isEqualTo(1.0);
+		emailConsumer.onEmail(message(9, "evt-3", "cliente@fail.test"), channel);
+
+		// NACK sin requeue: RabbitMQ lo deja en q.cmd.email.dlq, que no tiene consumidor (no se borra)
+		verify(channel).basicNack(9, false, false);
+		verify(channel, never()).basicAck(anyLong(), anyBoolean());
+		assertThat(meterRegistry.counter("pedidos360.dlq.messages", "queue", "q.cmd.email.dlq").count())
+				.isEqualTo(before + 1);
 	}
 
 	private static Message message(long tag, String eventId, String to) {
