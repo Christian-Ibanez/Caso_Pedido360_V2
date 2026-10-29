@@ -10,7 +10,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** Las colas de registro reciben copia de todo lo publicado y de todo lo rechazado, y no se descartan mensajes. */
+/** Cada flujo tiene su cola y su DLQ; lo rechazado llega a la DLQ por cmd.dead.dlx y no hay colas de auditoria. */
 class RabbitTopologyTest {
 
 	private final Declarables topology = new RabbitTopology().commandTopology();
@@ -23,27 +23,32 @@ class RabbitTopologyTest {
 	}
 
 	@Test
-	void historialRecibeTodosLosComandos() {
-		assertThat(keys(RabbitTopology.Q_HISTORY, RabbitTopology.CMD_DIRECT))
-				.containsExactlyInAnyOrder("email.send", "kitchen.ticket", "invoice.gen", "notify.inapp");
-		assertThat(keys(RabbitTopology.Q_HISTORY, RabbitTopology.CMD_TOPIC)).containsExactly("#");
+	void soloColasDeTrabajoYSusDlq() {
+		assertThat(topology.getDeclarablesByType(Queue.class)).extracting(Queue::getName)
+				.containsExactlyInAnyOrder(
+						"q.cmd.email", "q.cmd.email.dlq",
+						"q.cmd.kitchen", "q.cmd.kitchen.dlq",
+						"q.cmd.invoice", "q.cmd.invoice.dlq",
+						"q.notify.inapp", "q.notify.inapp.dlq");
 	}
 
 	@Test
-	void erroresRecibeTodoLoRechazado() {
-		assertThat(keys(RabbitTopology.Q_ERRORS, RabbitTopology.CMD_DLX))
-				.containsExactlyInAnyOrder("email.send", "kitchen.ticket", "invoice.gen", "notify.inapp");
+	void loRechazadoDeEmailVaAEmailDlq() {
+		Queue email = topology.getDeclarablesByType(Queue.class).stream()
+				.filter(q -> q.getName().equals("q.cmd.email")).findFirst().orElseThrow();
+		assertThat(email.getArguments())
+				.containsEntry("x-dead-letter-exchange", RabbitTopology.CMD_DLX)
+				.containsEntry("x-dead-letter-routing-key", "email.send");
+		assertThat(keys("q.cmd.email.dlq", RabbitTopology.CMD_DLX)).containsExactly("email.send");
 	}
 
 	@Test
-	void lasColasDeRegistroSonDurablesYSinLimite() {
+	void lasDlqSonDurablesYSinLimite() {
 		topology.getDeclarablesByType(Queue.class).stream()
-				.filter(q -> q.getName().startsWith("q.audit."))
+				.filter(q -> q.getName().endsWith(RabbitTopology.DLQ_SUFFIX))
 				.forEach(q -> {
 					assertThat(q.isDurable()).isTrue();
 					assertThat(q.getArguments()).doesNotContainKeys("x-max-length", "x-message-ttl", "x-expires");
 				});
-		assertThat(topology.getDeclarablesByType(Queue.class)).extracting(Queue::getName)
-				.contains(RabbitTopology.Q_HISTORY, RabbitTopology.Q_ERRORS);
 	}
 }

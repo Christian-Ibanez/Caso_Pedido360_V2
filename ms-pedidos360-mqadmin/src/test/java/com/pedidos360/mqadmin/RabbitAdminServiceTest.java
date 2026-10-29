@@ -32,7 +32,7 @@ class RabbitAdminServiceTest {
 	private final AmqpAdmin admin = mock(AmqpAdmin.class);
 	private final RabbitManagementClient management = mock(RabbitManagementClient.class);
 	private final RabbitAdminProperties props = new RabbitAdminProperties("/", List.of("http://mq:15672"),
-			List.of("q.cmd.", "q.notify.", "q.audit."), List.of("cmd.", "amq."));
+			List.of("q.cmd.", "q.notify."), List.of("cmd.", "amq."));
 	private final RabbitAdminService service = new RabbitAdminService(admin, management, props);
 
 	private static QueueRequest queue(String name) {
@@ -72,7 +72,7 @@ class RabbitAdminServiceTest {
 	@Test
 	void protegeLaTopologiaDelSistema() {
 		assertThatThrownBy(() -> service.deleteQueue("q.cmd.email", false)).isInstanceOf(ResourceConflictException.class);
-		assertThatThrownBy(() -> service.deleteQueue("q.audit.history", false)).isInstanceOf(ResourceConflictException.class);
+		assertThatThrownBy(() -> service.deleteQueue("q.cmd.email.dlq", false)).isInstanceOf(ResourceConflictException.class);
 		assertThatThrownBy(() -> service.deleteExchange("cmd.direct")).isInstanceOf(ResourceConflictException.class);
 		assertThatThrownBy(() -> service.deleteBinding("cmd.direct", "q.cmd.email", "email.send"))
 				.isInstanceOf(ResourceConflictException.class);

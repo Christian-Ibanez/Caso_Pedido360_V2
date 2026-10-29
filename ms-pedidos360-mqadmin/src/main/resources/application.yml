@@ -30,5 +30,5 @@ app:
     # Varias URL separadas por coma (un nodo por URL): si uno no responde se prueba el siguiente.
     management-urls: ${RABBITMQ_MANAGEMENT_URLS:http://localhost:15672}
     # Topologia del sistema que la API no deja eliminar (orders y notify dependen de ella). Prefijos de nombre.
-    protected-queue-prefixes: q.cmd., q.notify., q.audit.
+    protected-queue-prefixes: q.cmd., q.notify.
     protected-exchange-prefixes: cmd., amq.

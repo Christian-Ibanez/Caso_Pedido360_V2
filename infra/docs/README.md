@@ -40,7 +40,7 @@ docker compose up -d
 docker exec rabbitmq1 rabbitmqctl cluster_status   # Running Nodes: rabbit@rabbitmq1, rabbit@rabbitmq2
 ```
 UI: `http://<IP_PUBLICA_MQ>:15672` y `:15673` (usuario `pedidos360` / `pedidos360`, cambiarlo con `rabbitmqctl change_password`).
-La topología (4 colas + 4 DLQ, 2 colas de registro, exchanges y bindings) se carga sola desde `definitions.json`.
+La topología (4 colas + 4 DLQ, exchanges y bindings) se carga sola desde `definitions.json`.
 
 ### ec2-apps
 ```bash
@@ -124,8 +124,6 @@ La publicación ocurre después del commit y en un hilo aparte: si Kafka o Rabbi
 | cmd.direct | direct | q.cmd.email / q.cmd.kitchen / q.cmd.invoice / q.notify.inapp | email.send / kitchen.ticket / invoice.gen / notify.inapp |
 | cmd.topic | topic | q.cmd.email / q.cmd.kitchen / q.cmd.invoice / q.notify.inapp | email.# / kitchen.# / invoice.# / notify.# |
 | cmd.dead.dlx | direct | q.cmd.email.dlq / q.cmd.kitchen.dlq / q.cmd.invoice.dlq / q.notify.inapp.dlq | email.send / kitchen.ticket / invoice.gen / notify.inapp |
-| cmd.direct + cmd.topic | | q.audit.history | las 4 routing keys + `#` |
-| cmd.dead.dlx | direct | q.audit.errors | las 4 routing keys |
 
 Dead-lettering con políticas (*Admin → Policies*), como en la guía de la Parte 1. Cada patrón calza solo con la cola principal, no con su `.dlq`:
 
@@ -146,7 +144,7 @@ docker exec rabbitmq1 rabbitmqctl import_definitions /tmp/definitions.json
 - En AMQP `*` es exactamente una palabra, así que `email.*` no recibe `email.send.high` (el ejemplo del enunciado); por eso se usa `#`.
 - Envelope común: `type, eventId, timestamp, traceId, correlationId, payload`.
 - Nombres centralizados: en orders, en la clase `@Configuration` `MessagingConfig`; en notify, en `RabbitTopology` (`@Configuration`), que además declara los beans `Queue`, `Exchange` y `Binding` de cada flujo.
-- Consumidores por dominio en notify (un `@RabbitListener` por clase): `email.EmailConsumer`, `kitchen.KitchenConsumer`, `invoice.InvoiceConsumer`, `inapp.InAppConsumer` y `messaging.DeadLetterConsumer`. Todos delegan la confirmación en `messaging.CommandProcessor`.
+- Consumidores por dominio en notify (un `@RabbitListener` por clase): `email.EmailConsumer`, `kitchen.KitchenConsumer`, `invoice.InvoiceConsumer`, `inapp.InAppConsumer`. Todos delegan la confirmación en `messaging.CommandProcessor`.
 - Confirmación manual (ACK/NACK) en `CommandProcessor`, con tres rutas:
 
 | Resultado | Qué hace | Ejemplo para la demo |
@@ -156,7 +154,8 @@ docker exec rabbitmq1 rabbitmqctl import_definitions /tmp/definitions.json
 | Reintentos agotados | `basicNack(requeue=false)` → `cmd.dead.dlx` → DLQ | `@down.test` |
 | Error no recuperable (JSON inválido, `PermanentProcessingException`) | `basicNack(requeue=false)` sin reintentar → DLQ | `@fail.test` |
 
-  Nunca se usa `requeue=true`, para que un mensaje defectuoso no quede dando vueltas. notify escucha las 4 DLQ, registra cola de origen, motivo, cantidad y cuerpo, y suma la métrica `pedidos360.dlq.messages{queue}`.
+  Nunca se usa `requeue=true`, para que un mensaje defectuoso no quede dando vueltas. Cada envío a la DLQ se registra en el log de notify (`[DLQ] cola=… -> ….dlq motivo=… eventId=… cuerpo=…`) y en la métrica `pedidos360.dlq.messages{queue}`.
+- **Las DLQ no tienen consumidor**: el mensaje que falla queda guardado en la DLQ de su flujo (por ejemplo `q.cmd.email.dlq`), con el header `x-death` (cola de origen, motivo y cantidad de rechazos), hasta que alguien lo revise.
 - Idempotencia: notify recuerda los `eventId` procesados y hace ACK sin reenviar los duplicados.
 - **Campana de notificaciones** (comando `InAppNotify` por `notify.inapp` -> `q.notify.inapp`): cuando un cliente crea un pedido, orders avisa a los administradores ("Nuevo pedido #N"); cuando el administrador lo confirma (CREADO -> ACEPTADO, en proceso) el cliente recibe "Tu pedido #N está en proceso", y luego un aviso por cada cambio de estado. notify las guarda en `P360_NOTIFICATIONS` (eventId único) y el frontend las consulta cada 10 s a través del BFF.
 - **Demo de DLQ**: crear un pedido con `customerEmail` que termine en `@fail.test` (directo a la DLQ), `@down.test` (3 intentos y DLQ) o `@retry.test` (se recupera al tercer intento).
@@ -168,7 +167,7 @@ API REST para crear y eliminar colas, exchanges y bindings (Swagger en `http://<
 - `RabbitAdminService` concentra toda la lógica: crea y elimina con `AmqpAdmin` (AMQP) y lista con la API de Management (`RABBITMQ_MANAGEMENT_URLS`, un nodo por URL, prueba el siguiente si uno no responde). Los controladores solo llaman a sus métodos.
 - Validación con DTO (`QueueRequest`, `ExchangeRequest`, `BindingRequest`) y anotaciones: nombre obligatorio con letras, números, `.`, `-` y `_`, sin el prefijo reservado `amq.`; tipo de exchange `direct|topic|fanout|headers`; `deadLetterRoutingKey` exige `deadLetterExchange`; una cola durable no puede ser auto delete; TTL entre 0 y 7 días.
 - Reglas del servicio: no crea duplicados (**409**), exige que el exchange y la cola del binding existan (**404**), en `direct` no acepta comodines y en `topic` exige que `*` y `#` sean palabras completas (**400**), no elimina una cola con mensajes si `ifEmpty=true` (**409**).
-- La topología del sistema está protegida (**409** al intentar eliminarla): colas `q.cmd.*`, `q.notify.*`, `q.audit.*` y exchanges `cmd.*` / `amq.*` (configurable en `app.rabbit.protected-*`).
+- La topología del sistema está protegida (**409** al intentar eliminarla): colas `q.cmd.*`, `q.notify.*` y exchanges `cmd.*` / `amq.*` (configurable en `app.rabbit.protected-*`).
 - Errores en formato `ProblemDetail` (`title`, `detail` y `fields` por campo).
 
 ```bash
@@ -182,15 +181,14 @@ curl -X DELETE 'http://<IP_APPS>:8085/api/mq/queues/q.cmd.sms?ifEmpty=false'
 
 ### Registro de mensajes
 
-Las colas de trabajo quedan en 0 porque notify confirma (ACK) cada mensaje y RabbitMQ lo borra. Para que siempre quede registro:
+Las colas de trabajo quedan en 0 cuando notify está activo, porque confirma (ACK) cada mensaje y RabbitMQ lo borra. Con notify apagado los mensajes esperan en su cola (columna *Ready*) hasta que vuelva.
 
 | Dónde | Qué guarda |
 |---|---|
-| `q.audit.history` (RabbitMQ) | Copia de **cada** comando publicado (correo, cocina, boleta, campana). Sin consumidor ni límite: los mensajes no desaparecen. |
-| `q.audit.errors` (RabbitMQ) | Copia de cada mensaje **rechazado** (NACK). El header `x-death` indica la cola de origen, el motivo y cuántas veces falló. |
+| `q.cmd.*.dlq` / `q.notify.inapp.dlq` (RabbitMQ) | Cada mensaje **rechazado** (NACK) de esa cola. Sin consumidor: no se borra. El header `x-death` indica la cola de origen, el motivo y cuántas veces falló. |
 | `P360_UNSENT_MESSAGES` (Oracle, orders) | Comandos que **no se pudieron publicar** (RabbitMQ caído o sin cola de destino). Se reintentan cada 30 s; al enviarse pasan a `ENVIADO` con `SENT_AT`, pero la fila no se borra. |
 
-Para verlos en la consola (`:15672`): Queues → `q.audit.history` o `q.audit.errors` → **Get messages**, con *Ack mode* en **Nack message requeue true** para que el mensaje siga en la cola después de leerlo.
+Para verlos en la consola (`:15672`): Queues → por ejemplo `q.cmd.email.dlq` → **Get messages**, con *Ack mode* en **Nack message requeue true** para que el mensaje siga en la cola después de leerlo.
 
 ```sql
 SELECT id, message_type, routing_key, status, attempts, last_error, created_at, sent_at
