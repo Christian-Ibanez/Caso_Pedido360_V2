@@ -5,6 +5,7 @@ import { useCatalog, useOrders } from '../../hooks/useData';
 import { clp, longToday, fmtRelativeDay, fmtDate, orderId, orderTotal, sortByNewest } from '../../lib/format';
 import { categoryLabel, isAvailable } from '../../lib/products';
 import { getCart, setCart } from '../../lib/cart';
+import { isMine } from '../../lib/ownOrders';
 import { OrderProgress, OrderLines } from '../orders/OrderParts';
 import { StatusBadge, ProductThumb, Alert, PageHead } from '../ui';
 import { IconPlus, IconChevron, IconCheck } from '../Icons';
@@ -18,7 +19,7 @@ export default function CustomerHome() {
   const [added, setAdded] = useState({});
 
   const mine = useMemo(
-    () => sortByNewest(orders.filter((o) => (o.customerEmail || '').toLowerCase() === email)),
+    () => sortByNewest(orders.filter((o) => isMine(o, email, orderId(o)))),
     [orders, email],
   );
   const active = mine.filter((o) => !['ENTREGADO', 'CANCELADO'].includes(o.status));
