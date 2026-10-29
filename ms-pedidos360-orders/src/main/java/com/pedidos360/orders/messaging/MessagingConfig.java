@@ -33,6 +33,10 @@ public class MessagingConfig {
 	public static final String CMD_DIRECT = "cmd.direct";
 	/** Exchange de comandos por patron (email.#, kitchen.#, invoice.#, notify.#). */
 	public static final String CMD_TOPIC = "cmd.topic";
+	/** Exchange de cartas muertas: con la routing key de cada flujo lleva a su DLQ (email.send -> q.cmd.email.dlq). */
+	public static final String CMD_DLX = "cmd.dead.dlx";
+	/** Cola de correos (se informa en el header x-original-queue cuando el correo va directo a su DLQ). */
+	public static final String Q_EMAIL = "q.cmd.email";
 
 	/** Correo/webpush al cliente en cada cambio de estado (cmd.direct -> q.cmd.email). */
 	public static final String RK_EMAIL = "email.send";
@@ -91,5 +95,11 @@ public class MessagingConfig {
 	@ConditionalOnProperty(name = "app.messaging.enabled", havingValue = "true")
 	TopicExchange cmdTopic() {
 		return new TopicExchange(CMD_TOPIC, true, false);
+	}
+
+	@Bean
+	@ConditionalOnProperty(name = "app.messaging.enabled", havingValue = "true")
+	DirectExchange cmdDeadLetter() {
+		return new DirectExchange(CMD_DLX, true, false);
 	}
 }
