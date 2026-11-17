@@ -109,8 +109,8 @@ Si se quiere un HTTP API delante del BFF: authorizer JWT con issuer `https://log
 
 ## 5. Flujo de negocio
 
-1. `POST /api/orders` → pedido `CREADO`, evento `OrderCreated` en Kafka (si `KAFKA_ENABLED=true`) y comando `email.send` en RabbitMQ.
-2. `PUT .../status ACEPTADO` → orders llama a catalog `stock/decrease` (si falta stock responde **409** y el pedido sigue `CREADO`), evento `OrderAccepted`, `email.send` + `kitchen.ticket`.
+1. `POST /api/orders` → pedido `CREADO`, evento `OrderCreated` en Kafka (si `KAFKA_ENABLED=true`) y en RabbitMQ: **`kitchen.ticket`** (la cocina recibe el pedido al instante), `email.send` (confirmación al cliente) y `notify.inapp` (aviso al admin).
+2. `PUT .../status ACEPTADO` → orders llama a catalog `stock/decrease` (si falta stock responde **409** y el pedido sigue `CREADO`), evento `OrderAccepted`, `email.send` + aviso en la campana del cliente (la cocina ya tiene el ticket desde la creación).
 3. `EN_PREPARACION`, `DESPACHADO` (no se puede sin aceptar: 409), `ENTREGADO` → eventos `OrderPreparing/Dispatched/Delivered`; al entregar además `invoice.gen.pdf` (boleta).
 4. `CANCELADO` → `OrderCancelled`, correo prioritario `email.send.high` por `cmd.topic`; si ya había descontado stock, se repone.
 5. (Con Kafka) audit y report consumen `orders.events` con grupos distintos: auditoría guarda quién/qué/cuándo/desde dónde y publica en `audit.timeline`; reportería arma los KPIs sin llamar a orders (no bloquea el core).

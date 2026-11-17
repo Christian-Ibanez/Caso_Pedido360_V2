@@ -94,7 +94,8 @@ public class OrderMessagingListener {
 			send(MessagingConfig.CMD_DIRECT, MessagingConfig.RK_EMAIL, email);
 		}
 
-		if (event.status() == OrderStatus.ACEPTADO) {
+		// Pedido nuevo: la cocina recibe el ticket apenas se crea (q.cmd.kitchen), junto con el correo de confirmacion.
+		if (OrderEvent.CREATED.equals(event.type())) {
 			Map<String, Object> ticket = new LinkedHashMap<>();
 			ticket.put("orderId", order.id());
 			ticket.put("storeId", order.storeId());
