@@ -57,6 +57,24 @@ class OrderMessagingListenerTest {
 		return OrderEvent.of("OrderAccepted", OrderStatus.CREADO, order, new RequestMetadata("ana@mail.com", "10.0.0.7", "t", "c"));
 	}
 
+	private OrderEvent creado(String email) {
+		OrderResponse order = new OrderResponse(9L, 1L, "Ana", email, null, null, OrderStatus.CREADO,
+				new BigDecimal("3000"), List.of(), LocalDateTime.now(), LocalDateTime.now(), null, null, null);
+		return OrderEvent.of(OrderEvent.CREATED, null, order, new RequestMetadata("ana@mail.com", "10.0.0.7", "t", "c"));
+	}
+
+	@Test
+	void pedidoNuevoVaALaCocinaYAlCorreo() {
+		ReflectionTestUtils.setField(listener, "enabled", true);
+		ReflectionTestUtils.setField(listener, "kafkaEnabled", false);
+
+		listener.on(creado("ana@mail.com"));
+
+		verify(rabbit).convertAndSend(eq(MessagingConfig.CMD_DIRECT), eq(MessagingConfig.RK_KITCHEN), any(Object.class), any(MessagePostProcessor.class));
+		verify(rabbit).convertAndSend(eq(MessagingConfig.CMD_DIRECT), eq(MessagingConfig.RK_EMAIL), any(Object.class), any(MessagePostProcessor.class));
+		verify(rabbit).convertAndSend(eq(MessagingConfig.CMD_DIRECT), eq(MessagingConfig.RK_INAPP), any(Object.class), any(MessagePostProcessor.class));
+	}
+
 	@Test
 	void sinKafkaSoloEnviaComandosARabbit() {
 		ReflectionTestUtils.setField(listener, "enabled", true);
@@ -66,7 +84,8 @@ class OrderMessagingListenerTest {
 
 		verifyNoInteractions(kafka);
 		verify(rabbit).convertAndSend(eq(MessagingConfig.CMD_DIRECT), eq(MessagingConfig.RK_EMAIL), any(Object.class), any(MessagePostProcessor.class));
-		verify(rabbit).convertAndSend(eq(MessagingConfig.CMD_DIRECT), eq(MessagingConfig.RK_KITCHEN), any(Object.class), any(MessagePostProcessor.class));
+		// la cocina ya recibio el ticket al crear el pedido: aceptar no manda otro
+		verify(rabbit, never()).convertAndSend(eq(MessagingConfig.CMD_DIRECT), eq(MessagingConfig.RK_KITCHEN), any(Object.class), any(MessagePostProcessor.class));
 		verify(rabbit).convertAndSend(eq(MessagingConfig.CMD_DIRECT), eq(MessagingConfig.RK_INAPP), any(Object.class), any(MessagePostProcessor.class));
 	}
 
@@ -114,7 +133,7 @@ class OrderMessagingListenerTest {
 		ReflectionTestUtils.setField(listener, "enabled", true);
 		ReflectionTestUtils.setField(listener, "kafkaEnabled", false);
 
-		listener.on(aceptado("cliente@fail.test"));
+		listener.on(creado("cliente@fail.test"));
 
 		// cmd.dead.dlx + email.send -> q.cmd.email.dlq; nunca a cmd.direct/email.send (q.cmd.email)
 		ArgumentCaptor<MessagePostProcessor> post = ArgumentCaptor.forClass(MessagePostProcessor.class);

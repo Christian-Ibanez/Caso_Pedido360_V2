@@ -100,8 +100,10 @@ export function OrderNotifications({ order, live = false }) {
   const times = statusTimes(order);
   const status = order?.status;
   const id = order?.id ?? order?.orderId;
-  const notes = [{ text: 'Te enviamos un correo de confirmación', time: times.CREADO, kind: 'mail' }];
-  if (times.ACEPTADO) notes.push({ text: 'La cocina recibió tu pedido', time: times.ACEPTADO, kind: 'mail' });
+  const notes = [
+    { text: 'La cocina recibió tu pedido', time: times.CREADO, kind: 'mail' },
+    { text: 'Te enviamos un correo de confirmación', time: times.CREADO, kind: 'mail' },
+  ];
   if (status === 'ENTREGADO') notes.push({ text: 'Boleta electrónica enviada a tu correo', time: times.ENTREGADO, kind: 'mail' });
   if (status === 'CANCELADO') notes.push({ text: 'Te avisamos por correo la cancelación', time: times.CANCELADO, kind: 'mail' });
 
