@@ -10,6 +10,7 @@ import com.pedidos360.orders.messaging.RequestMetadata;
 import com.pedidos360.orders.model.CustomerOrder;
 import com.pedidos360.orders.model.OrderItem;
 import com.pedidos360.orders.model.OrderStatus;
+import com.pedidos360.orders.model.PaymentMethod;
 import com.pedidos360.orders.repository.OrderRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
@@ -98,6 +99,26 @@ public class OrderService {
 		OrderResponse saved = OrderResponse.from(repository.save(order));
 		// Kafka orders.events (reporteria/auditoria) + RabbitMQ email/cocina/boleta, despues del commit
 		publish(OrderEvent.typeFor(newStatus), current, saved);
+		return saved;
+	}
+
+	/**
+	 * Registra el pago del cliente. No cambia el estado del pedido; despues del commit sale la boleta a
+	 * q.cmd.invoice (RabbitMQ) y el evento OrderPaid a Kafka. No se puede pagar dos veces ni pagar un cancelado.
+	 */
+	@Transactional
+	public OrderResponse pay(Long id, PaymentMethod method) {
+		CustomerOrder order = get(id);
+		if (order.getStatus() == OrderStatus.CANCELADO) {
+			throw new InvalidStatusTransitionException("No se puede pagar un pedido cancelado");
+		}
+		if (order.getPaidAt() != null) {
+			throw new InvalidStatusTransitionException("El pedido #" + id + " ya fue pagado con " + order.getPaymentMethod().label());
+		}
+		order.setPaymentMethod(method);
+		order.setPaidAt(LocalDateTime.now());
+		OrderResponse saved = OrderResponse.from(repository.save(order));
+		publish(OrderEvent.PAID, saved.status(), saved);
 		return saved;
 	}
 

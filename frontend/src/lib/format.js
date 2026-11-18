@@ -164,6 +164,18 @@ export function statusTimes(order) {
   };
 }
 
+/** Medios de pago que acepta ms-orders (POST /api/orders/{id}/payment). */
+export const PAYMENT_METHODS = [
+  { id: 'TARJETA_CREDITO', label: 'Tarjeta de crédito' },
+  { id: 'TARJETA_DEBITO', label: 'Tarjeta de débito' },
+  { id: 'TRANSFERENCIA', label: 'Transferencia' },
+  { id: 'EFECTIVO', label: 'Efectivo' },
+];
+
+export function paymentLabel(method) {
+  return PAYMENT_METHODS.find((m) => m.id === method)?.label || method || '';
+}
+
 export function sortByNewest(orders) {
   return [...orders].sort((a, b) => (orderId(b) || 0) - (orderId(a) || 0));
 }

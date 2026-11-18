@@ -111,9 +111,10 @@ Si se quiere un HTTP API delante del BFF: authorizer JWT con issuer `https://log
 
 1. `POST /api/orders` → pedido `CREADO`, evento `OrderCreated` en Kafka (si `KAFKA_ENABLED=true`) y en RabbitMQ: **`kitchen.ticket`** (la cocina recibe el pedido al instante), `email.send` (confirmación al cliente) y `notify.inapp` (aviso al admin).
 2. `PUT .../status ACEPTADO` → orders llama a catalog `stock/decrease` (si falta stock responde **409** y el pedido sigue `CREADO`), evento `OrderAccepted`, `email.send` + aviso en la campana del cliente (la cocina ya tiene el ticket desde la creación).
-3. `EN_PREPARACION`, `DESPACHADO` (no se puede sin aceptar: 409), `ENTREGADO` → eventos `OrderPreparing/Dispatched/Delivered`; al entregar además `invoice.gen.pdf` (boleta).
-4. `CANCELADO` → `OrderCancelled`, correo prioritario `email.send.high` por `cmd.topic`; si ya había descontado stock, se repone.
-5. (Con Kafka) audit y report consumen `orders.events` con grupos distintos: auditoría guarda quién/qué/cuándo/desde dónde y publica en `audit.timeline`; reportería arma los KPIs sin llamar a orders (no bloquea el core).
+3. `EN_PREPARACION`, `DESPACHADO` (no se puede sin aceptar: 409), `ENTREGADO` → eventos `OrderPreparing/Dispatched/Delivered`.
+4. `POST /api/orders/{id}/payment` con `{"method":"TARJETA_CREDITO|TARJETA_DEBITO|TRANSFERENCIA|EFECTIVO"}` → el cliente paga (pago simulado, no cambia el estado; no se puede pagar dos veces ni un pedido cancelado: 409). Evento `OrderPaid` en Kafka y en RabbitMQ **`invoice.gen.pdf`** por `cmd.topic` → `q.cmd.invoice` (boleta con el medio de pago) + aviso al admin en la campana.
+5. `CANCELADO` → `OrderCancelled`, correo prioritario `email.send.high` por `cmd.topic`; si ya había descontado stock, se repone.
+6. (Con Kafka) audit y report consumen `orders.events` con grupos distintos: auditoría guarda quién/qué/cuándo/desde dónde y publica en `audit.timeline`; reportería arma los KPIs sin llamar a orders (no bloquea el core).
 
 La publicación ocurre después del commit y en un hilo aparte: si Kafka o RabbitMQ están caídos el pedido igual se guarda.
 

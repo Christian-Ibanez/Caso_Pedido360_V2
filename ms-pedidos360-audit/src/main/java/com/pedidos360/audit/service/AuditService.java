@@ -98,6 +98,7 @@ public class AuditService {
 			case "OrderDispatched" -> "despacho el pedido";
 			case "OrderDelivered" -> "marco como entregado el pedido";
 			case "OrderCancelled" -> "cancelo el pedido";
+			case "OrderPaid" -> "pago el pedido";
 			default -> "registro " + e.type() + " en el pedido";
 		};
 		String transition = e.previousStatus() != null && !e.previousStatus().equals(e.status())

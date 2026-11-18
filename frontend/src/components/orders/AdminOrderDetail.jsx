@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api/http';
 import { getOrderTimeline } from '../../api/audit';
 import { changeOrderStatus } from '../../hooks/useData';
-import { fmtDate, fmtTime, fmtDateTime, NEXT_STATUS, NEXT_ACTION, canCancel, STATUS_LABEL } from '../../lib/format';
+import { fmtDate, fmtTime, fmtDateTime, NEXT_STATUS, NEXT_ACTION, canCancel, STATUS_LABEL, paymentLabel } from '../../lib/format';
 import { OrderTimeline, OrderLines, OrderNotifications } from './OrderParts';
 import { StatusBadge, Alert } from '../ui';
 import { IconBack, IconChevron } from '../Icons';
@@ -14,6 +14,7 @@ const EVENT_LABEL = {
   OrderDispatched: 'Despachado',
   OrderDelivered: 'Entregado',
   OrderCancelled: 'Cancelado',
+  OrderPaid: 'Pagado',
 };
 
 export default function AdminOrderDetail({ id, byId, onBack }) {
@@ -88,6 +89,8 @@ export default function AdminOrderDetail({ id, byId, onBack }) {
                 <dt>Dirección</dt><dd>{order.deliveryAddress || '—'}</dd>
                 <dt>Notas</dt><dd>{order.notes || '—'}</dd>
                 <dt>Sucursal</dt><dd>{order.storeId ?? 1}</dd>
+                <dt>Pago</dt>
+                <dd>{order.paidAt ? `${paymentLabel(order.paymentMethod)} · ${fmtDateTime(order.paidAt)}` : 'Pendiente'}</dd>
               </dl>
             </section>
             <section className="card card-pad stack">

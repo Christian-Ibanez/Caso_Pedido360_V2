@@ -2,6 +2,7 @@ package com.pedidos360.orders.controller;
 
 import com.pedidos360.orders.dto.OrderRequest;
 import com.pedidos360.orders.dto.OrderResponse;
+import com.pedidos360.orders.dto.PaymentRequest;
 import com.pedidos360.orders.dto.StatusUpdateRequest;
 import com.pedidos360.orders.model.OrderStatus;
 import com.pedidos360.orders.service.OrderService;
@@ -56,6 +57,12 @@ public class OrderController {
 	@Operation(summary = "Cambiar estado: CREADO|ACEPTADO|EN_PREPARACION|DESPACHADO|ENTREGADO|CANCELADO")
 	public OrderResponse changeStatus(@PathVariable Long id, @Valid @RequestBody StatusUpdateRequest request) {
 		return service.changeStatus(id, request.status());
+	}
+
+	@PostMapping("/{id}/payment")
+	@Operation(summary = "Pagar pedido: TARJETA_CREDITO|TARJETA_DEBITO|TRANSFERENCIA|EFECTIVO (envia la boleta a q.cmd.invoice)")
+	public OrderResponse pay(@PathVariable Long id, @Valid @RequestBody PaymentRequest request) {
+		return service.pay(id, request.method());
 	}
 
 	@DeleteMapping("/{id}")

@@ -10,6 +10,7 @@ import com.pedidos360.orders.messaging.Command;
 import com.pedidos360.orders.messaging.unsent.UnsentMessageLog;
 import org.springframework.amqp.AmqpConnectException;
 import com.pedidos360.orders.model.OrderStatus;
+import com.pedidos360.orders.model.PaymentMethod;
 import org.junit.jupiter.api.Test;
 import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -53,13 +54,13 @@ class OrderMessagingListenerTest {
 
 	private OrderEvent aceptado(String email) {
 		OrderResponse order = new OrderResponse(7L, 1L, "Ana", email, null, null, OrderStatus.ACEPTADO,
-				new BigDecimal("3000"), List.of(), LocalDateTime.now(), LocalDateTime.now(), LocalDateTime.now(), null, null);
+				new BigDecimal("3000"), List.of(), LocalDateTime.now(), LocalDateTime.now(), LocalDateTime.now(), null, null, null, null);
 		return OrderEvent.of("OrderAccepted", OrderStatus.CREADO, order, new RequestMetadata("ana@mail.com", "10.0.0.7", "t", "c"));
 	}
 
 	private OrderEvent creado(String email) {
 		OrderResponse order = new OrderResponse(9L, 1L, "Ana", email, null, null, OrderStatus.CREADO,
-				new BigDecimal("3000"), List.of(), LocalDateTime.now(), LocalDateTime.now(), null, null, null);
+				new BigDecimal("3000"), List.of(), LocalDateTime.now(), LocalDateTime.now(), null, null, null, null, null);
 		return OrderEvent.of(OrderEvent.CREATED, null, order, new RequestMetadata("ana@mail.com", "10.0.0.7", "t", "c"));
 	}
 
@@ -73,6 +74,35 @@ class OrderMessagingListenerTest {
 		verify(rabbit).convertAndSend(eq(MessagingConfig.CMD_DIRECT), eq(MessagingConfig.RK_KITCHEN), any(Object.class), any(MessagePostProcessor.class));
 		verify(rabbit).convertAndSend(eq(MessagingConfig.CMD_DIRECT), eq(MessagingConfig.RK_EMAIL), any(Object.class), any(MessagePostProcessor.class));
 		verify(rabbit).convertAndSend(eq(MessagingConfig.CMD_DIRECT), eq(MessagingConfig.RK_INAPP), any(Object.class), any(MessagePostProcessor.class));
+	}
+
+	private OrderEvent pagado() {
+		OrderResponse order = new OrderResponse(5L, 1L, "Ana", "ana@mail.com", null, null, OrderStatus.CREADO,
+				new BigDecimal("8900"), List.of(), LocalDateTime.now(), LocalDateTime.now(), null, null, null,
+				PaymentMethod.TARJETA_CREDITO, LocalDateTime.now());
+		return OrderEvent.of(OrderEvent.PAID, OrderStatus.CREADO, order, new RequestMetadata("ana@mail.com", "10.0.0.7", "t", "c"));
+	}
+
+	@Test
+	void alPagarLaBoletaVaAInvoiceYElAdminRecibeElAviso() {
+		ReflectionTestUtils.setField(listener, "enabled", true);
+		ReflectionTestUtils.setField(listener, "kafkaEnabled", false);
+
+		listener.on(pagado());
+
+		ArgumentCaptor<Object> invoice = ArgumentCaptor.forClass(Object.class);
+		verify(rabbit).convertAndSend(eq(MessagingConfig.CMD_TOPIC), eq(MessagingConfig.RK_INVOICE_PDF), invoice.capture(), any(MessagePostProcessor.class));
+		Command command = (Command) invoice.getValue();
+		assertThat(command.type()).isEqualTo("InvoiceGenerate");
+		assertThat(command.payload()).containsEntry("orderId", 5L).containsEntry("paymentMethod", PaymentMethod.TARJETA_CREDITO);
+		verify(rabbit).convertAndSend(eq(MessagingConfig.CMD_DIRECT), eq(MessagingConfig.RK_INAPP), any(Object.class), any(MessagePostProcessor.class));
+		// el pago no repite el correo ni el ticket de cocina
+		verify(rabbit, never()).convertAndSend(eq(MessagingConfig.CMD_DIRECT), eq(MessagingConfig.RK_EMAIL), any(Object.class), any(MessagePostProcessor.class));
+		verify(rabbit, never()).convertAndSend(eq(MessagingConfig.CMD_DIRECT), eq(MessagingConfig.RK_KITCHEN), any(Object.class), any(MessagePostProcessor.class));
+
+		Map<String, Object> aviso = OrderMessagingListener.inAppPayload(pagado());
+		assertThat(aviso).containsEntry("audience", "ADMIN");
+		assertThat((String) aviso.get("body")).contains("$8.900").contains("tarjeta de crédito");
 	}
 
 	@Test
@@ -92,7 +122,7 @@ class OrderMessagingListenerTest {
 	@Test
 	void pedidoNuevoNotificaAlAdministradorYAlConfirmarAlCliente() {
 		OrderResponse creado = new OrderResponse(8L, 1L, "Ana", "ana@mail.com", null, null, OrderStatus.CREADO,
-				new BigDecimal("12500"), List.of(), LocalDateTime.now(), LocalDateTime.now(), null, null, null);
+				new BigDecimal("12500"), List.of(), LocalDateTime.now(), LocalDateTime.now(), null, null, null, null, null);
 		Map<String, Object> admin = OrderMessagingListener.inAppPayload(
 				OrderEvent.of(OrderEvent.CREATED, null, creado, new RequestMetadata("ana@mail.com", "10.0.0.7", "t", "c")));
 		assertThat(admin).containsEntry("audience", "ADMIN").containsEntry("orderId", 8L);

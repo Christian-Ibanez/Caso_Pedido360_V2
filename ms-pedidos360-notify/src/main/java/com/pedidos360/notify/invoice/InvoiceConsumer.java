@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 
-/** Dominio boletas: consume q.cmd.invoice (invoice.gen y invoice.gen.pdf) cuando el pedido se entrega. */
+/** Dominio boletas: consume q.cmd.invoice (invoice.gen y invoice.gen.pdf) cuando el cliente paga el pedido. */
 @Component
 public class InvoiceConsumer {
 

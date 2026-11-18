@@ -28,6 +28,8 @@ public record OrderEvent(
 	public static final String CREATED = "OrderCreated";
 	public static final String UPDATED = "OrderUpdated";
 	public static final String DELETED = "OrderDeleted";
+	/** El cliente pago el pedido (no cambia el estado): genera la boleta en q.cmd.invoice. */
+	public static final String PAID = "OrderPaid";
 
 	public static OrderEvent of(String type, OrderStatus previousStatus, OrderResponse order, RequestMetadata meta) {
 		return new OrderEvent(type, UUID.randomUUID().toString(), Instant.now(), meta.traceId(), meta.correlationId(),

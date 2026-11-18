@@ -82,6 +82,14 @@ public class OrderMessagingListener {
 		}
 		OrderResponse order = event.order();
 
+		// Pago del cliente: la boleta va a q.cmd.invoice y el administrador recibe el aviso en la campana
+		if (OrderEvent.PAID.equals(event.type())) {
+			send(MessagingConfig.CMD_TOPIC, MessagingConfig.RK_INVOICE_PDF,
+					Command.of("InvoiceGenerate", event, invoicePayload(order)));
+			send(MessagingConfig.CMD_DIRECT, MessagingConfig.RK_INAPP, Command.of("InAppNotify", event, inAppPayload(event)));
+			return;
+		}
+
 		// Correo invalido o rechazado: error de datos, va directo a q.cmd.email.dlq sin pasar por q.cmd.email.
 		// Cancelaciones salen como prioritarias por el exchange topic (email.# -> q.cmd.email).
 		Command email = Command.of("EmailSend", event, emailPayload(event));
@@ -105,25 +113,28 @@ public class OrderMessagingListener {
 			send(MessagingConfig.CMD_DIRECT, MessagingConfig.RK_KITCHEN, Command.of("KitchenTicket", event, ticket));
 		}
 
-		if (event.status() == OrderStatus.ENTREGADO) {
-			Map<String, Object> invoice = new LinkedHashMap<>();
-			invoice.put("orderId", order.id());
-			invoice.put("storeId", order.storeId());
-			invoice.put("customerName", order.customerName());
-			invoice.put("customerEmail", order.customerEmail());
-			invoice.put("total", order.total());
-			invoice.put("items", order.items());
-			send(MessagingConfig.CMD_TOPIC, MessagingConfig.RK_INVOICE_PDF, Command.of("InvoiceGenerate", event, invoice));
-		}
-
 		Map<String, Object> inApp = inAppPayload(event);
 		if (inApp != null) {
 			send(MessagingConfig.CMD_DIRECT, MessagingConfig.RK_INAPP, Command.of("InAppNotify", event, inApp));
 		}
 	}
 
+	/** Boleta del pago: cmd.topic + invoice.gen.pdf -> q.cmd.invoice (la consume el dominio boletas de notify). */
+	public static Map<String, Object> invoicePayload(OrderResponse order) {
+		Map<String, Object> invoice = new LinkedHashMap<>();
+		invoice.put("orderId", order.id());
+		invoice.put("storeId", order.storeId());
+		invoice.put("customerName", order.customerName());
+		invoice.put("customerEmail", order.customerEmail());
+		invoice.put("total", order.total());
+		invoice.put("paymentMethod", order.paymentMethod());
+		invoice.put("paidAt", order.paidAt() != null ? order.paidAt().toString() : null);
+		invoice.put("items", order.items());
+		return invoice;
+	}
+
 	/**
-	 * Notificacion de la campana: pedido nuevo -> administradores; cambio de estado -> el cliente del pedido.
+	 * Notificacion de la campana: pedido nuevo y pago -> administradores; cambio de estado -> el cliente del pedido.
 	 * Al confirmar (ACEPTADO) el cliente recibe "tu pedido esta en proceso".
 	 */
 	public static Map<String, Object> inAppPayload(OrderEvent event) {
@@ -132,6 +143,19 @@ public class OrderMessagingListener {
 			return null;
 		}
 		Long id = order.id();
+		if (OrderEvent.PAID.equals(event.type())) {
+			Map<String, Object> paid = new LinkedHashMap<>();
+			paid.put("audience", "ADMIN");
+			paid.put("recipient", null);
+			paid.put("orderId", id);
+			paid.put("status", event.status());
+			paid.put("previousStatus", event.previousStatus());
+			paid.put("title", "Pago recibido del pedido #" + id);
+			paid.put("body", order.customerName() + " pagó " + clp(order.total())
+					+ (order.paymentMethod() != null ? " con " + order.paymentMethod().label().toLowerCase() : "")
+					+ ". La boleta se envió a " + order.customerEmail() + ".");
+			return paid;
+		}
 		String audience = "CUSTOMER";
 		String title;
 		String body;
@@ -156,7 +180,7 @@ public class OrderMessagingListener {
 			}
 			case ENTREGADO -> {
 				title = "Tu pedido #" + id + " fue entregado";
-				body = "Gracias por tu compra. Te enviamos la boleta electrónica a tu correo.";
+				body = "Gracias por tu compra.";
 			}
 			case CANCELADO -> {
 				title = "Tu pedido #" + id + " fue cancelado";

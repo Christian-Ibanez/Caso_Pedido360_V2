@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useRoles } from '../../hooks/useRoles';
-import { useCatalog, useOrders, changeOrderStatus } from '../../hooks/useData';
+import { useCatalog, useOrders, changeOrderStatus, payOrder } from '../../hooks/useData';
 import {
   clp, fmtDate, fmtTime, orderId, orderTotal, sortByNewest, inStatusGroup, STATUS_GROUPS,
+  PAYMENT_METHODS, paymentLabel,
 } from '../../lib/format';
 import { OrderTimeline, OrderLines, OrderNotifications, itemsSummary } from './OrderParts';
 import NewOrderForm from './NewOrderForm';
@@ -23,6 +24,8 @@ export default function CustomerOrders() {
   const [notice, setNotice] = useState('');
   const [actionError, setActionError] = useState('');
   const [cancelling, setCancelling] = useState(false);
+  const [method, setMethod] = useState('');
+  const [paying, setPaying] = useState(false);
 
   const mine = useMemo(
     () => sortByNewest(orders.filter((o) => isMine(o, email, orderId(o)))),
@@ -52,6 +55,23 @@ export default function CustomerOrders() {
       setActionError(err.message);
     } finally {
       setCancelling(false);
+    }
+  };
+
+  useEffect(() => { setMethod(''); }, [selected]);
+
+  const pay = async () => {
+    if (!current || !method) return;
+    setPaying(true);
+    setActionError('');
+    try {
+      await payOrder(orderId(current), method);
+      await reload({ silent: true });
+      setNotice(`Pagaste el pedido #${orderId(current)} con ${paymentLabel(method).toLowerCase()}. Te enviaremos la boleta a tu correo.`);
+    } catch (err) {
+      setActionError(err.message);
+    } finally {
+      setPaying(false);
     }
   };
 
@@ -158,6 +178,37 @@ export default function CustomerOrders() {
                 {current.notes && <p className="muted small" style={{ margin: '4px 0 0' }}>Nota: {current.notes}</p>}
               </div>
             )}
+            <div>
+              <h3 className="section-label">Pago</h3>
+              {current.paidAt ? (
+                <p style={{ margin: 0 }}>
+                  Pagado con {paymentLabel(current.paymentMethod).toLowerCase()}
+                  <span className="muted small"> · {fmtDate(current.paidAt)}, {fmtTime(current.paidAt)}</span>
+                </p>
+              ) : current.status === 'CANCELADO' ? (
+                <p className="muted" style={{ margin: 0 }}>Pedido cancelado, no requiere pago.</p>
+              ) : (
+                <div className="stack-sm">
+                  <div className="chips" role="radiogroup" aria-label="Medio de pago">
+                    {PAYMENT_METHODS.map((m) => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        role="radio"
+                        aria-checked={method === m.id}
+                        className={`chip ${method === m.id ? 'active' : ''}`}
+                        onClick={() => setMethod(m.id)}
+                      >
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
+                  <button type="button" className="btn primary" onClick={pay} disabled={!method || paying}>
+                    {paying ? 'Procesando pago…' : `Pagar ${clp(orderTotal(current))}`}
+                  </button>
+                </div>
+              )}
+            </div>
             <div>
               <h3 className="section-label">Notificaciones</h3>
               <OrderNotifications order={current} live />

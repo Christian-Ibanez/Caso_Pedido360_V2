@@ -104,7 +104,7 @@ export function OrderNotifications({ order, live = false }) {
     { text: 'La cocina recibió tu pedido', time: times.CREADO, kind: 'mail' },
     { text: 'Te enviamos un correo de confirmación', time: times.CREADO, kind: 'mail' },
   ];
-  if (status === 'ENTREGADO') notes.push({ text: 'Boleta electrónica enviada a tu correo', time: times.ENTREGADO, kind: 'mail' });
+  if (order?.paidAt) notes.push({ text: 'Boleta electrónica enviada a tu correo', time: order.paidAt, kind: 'mail' });
   if (status === 'CANCELADO') notes.push({ text: 'Te avisamos por correo la cancelación', time: times.CANCELADO, kind: 'mail' });
 
   const real = (inbox?.items || []).filter((n) => n.audience === 'CUSTOMER' && String(n.orderId) === String(id));

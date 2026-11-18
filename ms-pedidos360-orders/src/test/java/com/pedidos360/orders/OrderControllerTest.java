@@ -1,6 +1,8 @@
 package com.pedidos360.orders;
 
+import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestMethodOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -13,6 +15,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
+// flujoCompleto... va primero porque espera que su pedido sea el #1 (los demas tests crean pedidos en la misma BD)
+@TestMethodOrder(MethodOrderer.MethodName.class)
 class OrderControllerTest {
 
 	@Autowired
@@ -52,10 +56,41 @@ class OrderControllerTest {
 	}
 
 	@Test
+	void pagarRegistraElMedioDePagoYNoSePuedePagarDosVeces() throws Exception {
+		String body = mvc.perform(post("/api/orders").contentType(MediaType.APPLICATION_JSON).content(ORDER))
+				.andExpect(status().isCreated())
+				.andReturn().getResponse().getContentAsString();
+		long id = Long.parseLong(body.replaceAll(".*?\"id\":(\\d+).*", "$1"));
+
+		pay(id, "PAYPAL").andExpect(status().isBadRequest());
+		pay(id, "TARJETA_DEBITO").andExpect(status().isOk())
+				.andExpect(jsonPath("$.paymentMethod").value("TARJETA_DEBITO"))
+				.andExpect(jsonPath("$.paidAt").exists())
+				.andExpect(jsonPath("$.status").value("CREADO"));
+		pay(id, "EFECTIVO").andExpect(status().isConflict());
+		pay(999, "EFECTIVO").andExpect(status().isNotFound());
+	}
+
+	@Test
+	void noSePuedePagarUnPedidoCancelado() throws Exception {
+		String body = mvc.perform(post("/api/orders").contentType(MediaType.APPLICATION_JSON).content(ORDER))
+				.andReturn().getResponse().getContentAsString();
+		long id = Long.parseLong(body.replaceAll(".*?\"id\":(\\d+).*", "$1"));
+		changeStatus(id, "CANCELADO").andExpect(status().isOk());
+		pay(id, "EFECTIVO").andExpect(status().isConflict());
+	}
+
+	@Test
 	void pedidoSinItemsEsInvalido() throws Exception {
 		mvc.perform(post("/api/orders").contentType(MediaType.APPLICATION_JSON)
 						.content("{\"storeId\":1,\"customerName\":\"X\",\"customerEmail\":\"x@mail.com\",\"items\":[]}"))
 				.andExpect(status().isBadRequest());
+	}
+
+	private ResultActions pay(long id, String method) throws Exception {
+		return mvc.perform(post("/api/orders/" + id + "/payment")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"method\":\"" + method + "\"}"));
 	}
 
 	private ResultActions changeStatus(long id, String status) throws Exception {

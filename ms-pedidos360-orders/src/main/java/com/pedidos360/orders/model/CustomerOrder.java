@@ -57,6 +57,13 @@ public class CustomerOrder {
 	/** createdAt -> deliveredAt = lead time (KPI de reporteria). */
 	private LocalDateTime deliveredAt;
 
+	/** Medio de pago y fecha del pago; null mientras el pedido no se paga. */
+	@Enumerated(EnumType.STRING)
+	@Column(length = 30)
+	private PaymentMethod paymentMethod;
+
+	private LocalDateTime paidAt;
+
 	@PrePersist
 	void onCreate() {
 		createdAt = LocalDateTime.now();
