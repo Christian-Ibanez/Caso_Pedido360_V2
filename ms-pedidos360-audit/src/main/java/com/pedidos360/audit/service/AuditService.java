@@ -90,19 +90,31 @@ public class AuditService {
 	private static String summary(OrderEventMessage e) {
 		String who = e.actor() != null ? e.actor() : "desconocido";
 		String what = switch (e.type()) {
-			case "OrderCreated" -> "creo el pedido";
-			case "OrderUpdated" -> "edito el pedido";
-			case "OrderDeleted" -> "elimino el pedido";
-			case "OrderAccepted" -> "acepto el pedido";
-			case "OrderPreparing" -> "paso a preparacion el pedido";
-			case "OrderDispatched" -> "despacho el pedido";
-			case "OrderDelivered" -> "marco como entregado el pedido";
-			case "OrderCancelled" -> "cancelo el pedido";
-			case "OrderPaid" -> "pago el pedido";
-			default -> "registro " + e.type() + " en el pedido";
+			case "OrderCreated" -> "creó el pedido";
+			case "OrderUpdated" -> "editó el pedido";
+			case "OrderDeleted" -> "eliminó el pedido";
+			case "OrderAccepted" -> "aceptó el pedido";
+			case "OrderPreparing" -> "pasó a preparación el pedido";
+			case "OrderDispatched" -> "despachó el pedido";
+			case "OrderDelivered" -> "marcó como entregado el pedido";
+			case "OrderCancelled" -> "canceló el pedido";
+			case "OrderPaid" -> "pagó el pedido";
+			default -> "registró " + e.type() + " en el pedido";
 		};
+		String payment = "OrderPaid".equals(e.type()) && e.order() != null && e.order().paymentMethod() != null
+				? " con " + paymentLabel(e.order().paymentMethod()) : "";
 		String transition = e.previousStatus() != null && !e.previousStatus().equals(e.status())
 				? " (" + e.previousStatus() + " -> " + e.status() + ")" : "";
-		return who + " " + what + " #" + e.orderId() + transition + (e.origin() != null ? " desde " + e.origin() : "");
+		return who + " " + what + " #" + e.orderId() + payment + transition + (e.origin() != null ? " desde " + e.origin() : "");
+	}
+
+	private static String paymentLabel(String method) {
+		return switch (method) {
+			case "TARJETA_CREDITO" -> "tarjeta de crédito";
+			case "TARJETA_DEBITO" -> "tarjeta de débito";
+			case "TRANSFERENCIA" -> "transferencia";
+			case "EFECTIVO" -> "efectivo";
+			default -> method.toLowerCase();
+		};
 	}
 }
