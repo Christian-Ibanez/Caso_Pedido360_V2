@@ -3,6 +3,7 @@ package com.pedidos360.orders.dto;
 import com.pedidos360.orders.model.CustomerOrder;
 import com.pedidos360.orders.model.OrderItem;
 import com.pedidos360.orders.model.OrderStatus;
+import com.pedidos360.orders.model.PaymentMethod;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -22,7 +23,9 @@ public record OrderResponse(
 		LocalDateTime updatedAt,
 		LocalDateTime acceptedAt,
 		LocalDateTime dispatchedAt,
-		LocalDateTime deliveredAt
+		LocalDateTime deliveredAt,
+		PaymentMethod paymentMethod,
+		LocalDateTime paidAt
 ) {
 	public record Item(Long id, Long productId, Integer quantity, BigDecimal unitPrice, BigDecimal subtotal) {
 		static Item from(OrderItem i) {
@@ -35,6 +38,7 @@ public record OrderResponse(
 				o.getId(), o.getStoreId(), o.getCustomerName(), o.getCustomerEmail(),
 				o.getDeliveryAddress(), o.getNotes(), o.getStatus(), o.getTotal(),
 				o.getItems().stream().map(Item::from).toList(),
-				o.getCreatedAt(), o.getUpdatedAt(), o.getAcceptedAt(), o.getDispatchedAt(), o.getDeliveredAt());
+				o.getCreatedAt(), o.getUpdatedAt(), o.getAcceptedAt(), o.getDispatchedAt(), o.getDeliveredAt(),
+				o.getPaymentMethod(), o.getPaidAt());
 	}
 }

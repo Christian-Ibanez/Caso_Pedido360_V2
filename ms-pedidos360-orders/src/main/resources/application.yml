@@ -44,6 +44,10 @@ app:
   # false = no publica eventos en Kafka (los comandos a RabbitMQ siguen saliendo); para desplegar sin ec2-kafka
   kafka:
     enabled: ${KAFKA_ENABLED:true}
+  # Plazo de pago: un pedido sin pagar despues de `deadline` pasa a RECHAZADO (se revisa cada check-ms)
+  payment:
+    deadline: ${PAYMENT_DEADLINE:10m}
+    check-ms: ${PAYMENT_CHECK_MS:30000}
   # Coordinacion de stock con ms-pedidos360-catalog al aceptar/cancelar
   catalog:
     enabled: ${CATALOG_ENABLED:false}

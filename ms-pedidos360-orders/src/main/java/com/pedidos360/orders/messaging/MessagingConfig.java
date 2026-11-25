@@ -28,6 +28,16 @@ public class MessagingConfig {
 
 	/** Topico Kafka de eventos de pedidos (solo si app.kafka.enabled=true). */
 	public static final String ORDERS_EVENTS_TOPIC = "orders.events";
+	/**
+	 * Pedidos creados con un correo que no se puede enviar: no entran a orders.events, se publican directo en el
+	 * historial de auditoria (key ORDER:id, mismo formato de key que usa ms-audit) y ms-audit los registra desde ahi.
+	 */
+	public static final String AUDIT_TIMELINE_TOPIC = "audit.timeline";
+	/**
+	 * Registro de pedidos rechazados (correo invalido o sin pago a tiempo): ms-orders deja una copia del evento en
+	 * las DLT de los dos consumidores de orders.events, con el motivo en el header x-rejection-reason.
+	 */
+	public static final java.util.List<String> REJECTION_DLTS = java.util.List.of("orders.events.audit.DLT", "orders.events.report.DLT");
 
 	/** Exchange de comandos con routing exacto. */
 	public static final String CMD_DIRECT = "cmd.direct";

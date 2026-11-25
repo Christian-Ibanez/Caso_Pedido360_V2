@@ -44,7 +44,7 @@ class AuditFlowTest {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.length()").value(2))
 				.andExpect(jsonPath("$[0].eventType").value("OrderCreated"))
-				.andExpect(jsonPath("$[1].summary").value("operador@mail.com acepto el pedido #42 (CREADO -> ACEPTADO) desde 10.0.0.7"));
+				.andExpect(jsonPath("$[1].summary").value("operador@mail.com aceptó el pedido #42 (CREADO -> ACEPTADO) desde 10.0.0.7"));
 
 		mvc.perform(get("/api/audit/events").param("user", "operador").param("type", "OrderAccepted"))
 				.andExpect(jsonPath("$.length()").value(1));

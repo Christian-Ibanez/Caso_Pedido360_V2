@@ -85,6 +85,7 @@ export const STATUS_LABEL = {
   DESPACHADO: 'Despachado',
   ENTREGADO: 'Entregado',
   CANCELADO: 'Cancelado',
+  RECHAZADO: 'Rechazado',
 };
 
 export const STATUS_BADGE = {
@@ -94,6 +95,7 @@ export const STATUS_BADGE = {
   DESPACHADO: 'DESPACHADO',
   ENTREGADO: 'ENTREGADO',
   CANCELADO: 'CANCELADO',
+  RECHAZADO: 'RECHAZADO',
 };
 
 export const STATUS_COLOR = {
@@ -103,6 +105,7 @@ export const STATUS_COLOR = {
   DESPACHADO: '#0891b2',
   ENTREGADO: '#16a34a',
   CANCELADO: '#a8a29e',
+  RECHAZADO: '#dc2626',
 };
 
 /** Siguiente estado válido y el texto del botón que lo dispara. */
@@ -130,7 +133,7 @@ export function inStatusGroup(status, group) {
     case 'NUEVOS': return status === 'CREADO';
     case 'PROCESO': return ['ACEPTADO', 'EN_PREPARACION', 'DESPACHADO'].includes(status);
     case 'COMPLETADOS': return status === 'ENTREGADO';
-    case 'CANCELADOS': return status === 'CANCELADO';
+    case 'CANCELADOS': return status === 'CANCELADO' || status === 'RECHAZADO';
     default: return true;
   }
 }
@@ -140,7 +143,7 @@ export const STATUS_GROUPS = [
   { id: 'NUEVOS', label: 'Pendientes' },
   { id: 'PROCESO', label: 'En proceso' },
   { id: 'COMPLETADOS', label: 'Completados' },
-  { id: 'CANCELADOS', label: 'Cancelados' },
+  { id: 'CANCELADOS', label: 'Cancelados/rechazados' },
 ];
 
 export function orderId(order) {
@@ -161,7 +164,35 @@ export function statusTimes(order) {
     DESPACHADO: order?.dispatchedAt,
     ENTREGADO: order?.deliveredAt,
     CANCELADO: order?.status === 'CANCELADO' ? order?.updatedAt : null,
+    RECHAZADO: order?.status === 'RECHAZADO' ? order?.updatedAt : null,
   };
+}
+
+/** Plazo para pagar (debe coincidir con PAYMENT_DEADLINE de ms-orders). */
+export const PAYMENT_DEADLINE_MIN = Number(import.meta.env.VITE_PAYMENT_DEADLINE_MIN || 10);
+
+/** Hora límite de pago de un pedido (createdAt + plazo). */
+export function paymentDeadline(order) {
+  const created = order?.createdAt ? new Date(order.createdAt) : null;
+  return created && !Number.isNaN(created.getTime()) ? new Date(created.getTime() + PAYMENT_DEADLINE_MIN * 60000) : null;
+}
+
+/** Motivo por el que el admin no puede avanzar el pedido al estado `next` (o null si puede). */
+export function blockedReason(order, next) {
+  if (next === 'ENTREGADO' && !order?.paidAt) return 'Esperando el pago del cliente';
+  return null;
+}
+
+/** Medios de pago que acepta ms-orders (POST /api/orders/{id}/payment). */
+export const PAYMENT_METHODS = [
+  { id: 'TARJETA_CREDITO', label: 'Tarjeta de crédito' },
+  { id: 'TARJETA_DEBITO', label: 'Tarjeta de débito' },
+  { id: 'TRANSFERENCIA', label: 'Transferencia' },
+  { id: 'EFECTIVO', label: 'Efectivo' },
+];
+
+export function paymentLabel(method) {
+  return PAYMENT_METHODS.find((m) => m.id === method)?.label || method || '';
 }
 
 export function sortByNewest(orders) {

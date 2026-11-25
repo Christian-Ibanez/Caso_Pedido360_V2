@@ -30,6 +30,16 @@ public class AuditService {
 	/** Idempotente: si el eventId ya fue registrado (reentrega de Kafka) no se duplica. */
 	@Transactional
 	public boolean record(OrderEventMessage event, String rawJson, String topic, int partition, long offset) {
+		return record(event, rawJson, topic, partition, offset, true);
+	}
+
+	/**
+	 * @param publishTimeline false cuando el evento ya viene de audit.timeline (OrderEmailRejected que publica
+	 *                        ms-orders): se registra pero no se vuelve a publicar en el mismo topico.
+	 */
+	@Transactional
+	public boolean record(OrderEventMessage event, String rawJson, String topic, int partition, long offset,
+			boolean publishTimeline) {
 		if (repository.existsByEventId(event.eventId())) {
 			log.info("Evento {} ya auditado, se omite", event.eventId());
 			return false;
@@ -53,7 +63,9 @@ public class AuditService {
 		audit.setKafkaOffset(offset);
 		audit.setPayload(rawJson);
 		AuditEventResponse saved = AuditEventResponse.from(repository.save(audit));
-		timelinePublisher.publish(saved);
+		if (publishTimeline) {
+			timelinePublisher.publish(saved);
+		}
 		log.info("Auditado {} pedido {} por {} desde {}", event.type(), event.orderId(), event.actor(), event.origin());
 		return true;
 	}
@@ -88,20 +100,37 @@ public class AuditService {
 	}
 
 	private static String summary(OrderEventMessage e) {
-		String who = e.actor() != null ? e.actor() : "desconocido";
+		String who = e.actor() == null ? "desconocido" : "system".equals(e.actor()) ? "El sistema" : e.actor();
 		String what = switch (e.type()) {
-			case "OrderCreated" -> "creo el pedido";
-			case "OrderUpdated" -> "edito el pedido";
-			case "OrderDeleted" -> "elimino el pedido";
-			case "OrderAccepted" -> "acepto el pedido";
-			case "OrderPreparing" -> "paso a preparacion el pedido";
-			case "OrderDispatched" -> "despacho el pedido";
-			case "OrderDelivered" -> "marco como entregado el pedido";
-			case "OrderCancelled" -> "cancelo el pedido";
-			default -> "registro " + e.type() + " en el pedido";
+			case "OrderCreated" -> "creó el pedido";
+			case "OrderUpdated" -> "editó el pedido";
+			case "OrderDeleted" -> "eliminó el pedido";
+			case "OrderAccepted" -> "aceptó el pedido";
+			case "OrderPreparing" -> "pasó a preparación el pedido";
+			case "OrderDispatched" -> "despachó el pedido";
+			case "OrderDelivered" -> "marcó como entregado el pedido";
+			case "OrderCancelled" -> "canceló el pedido";
+			case "OrderPaid" -> "pagó el pedido";
+			case "OrderEmailRejected" -> "creó el pedido";
+			case "OrderRejected" -> "rechazó por falta de pago el pedido";
+			default -> "registró " + e.type() + " en el pedido";
 		};
+		String payment = "OrderPaid".equals(e.type()) && e.order() != null && e.order().paymentMethod() != null
+				? " con " + paymentLabel(e.order().paymentMethod())
+				: "OrderEmailRejected".equals(e.type()) && e.order() != null && e.order().customerEmail() != null
+						? " con un correo rechazado (" + e.order().customerEmail() + ")" : "";
 		String transition = e.previousStatus() != null && !e.previousStatus().equals(e.status())
 				? " (" + e.previousStatus() + " -> " + e.status() + ")" : "";
-		return who + " " + what + " #" + e.orderId() + transition + (e.origin() != null ? " desde " + e.origin() : "");
+		return who + " " + what + " #" + e.orderId() + payment + transition + (e.origin() != null ? " desde " + e.origin() : "");
+	}
+
+	private static String paymentLabel(String method) {
+		return switch (method) {
+			case "TARJETA_CREDITO" -> "tarjeta de crédito";
+			case "TARJETA_DEBITO" -> "tarjeta de débito";
+			case "TRANSFERENCIA" -> "transferencia";
+			case "EFECTIVO" -> "efectivo";
+			default -> method.toLowerCase();
+		};
 	}
 }

@@ -14,11 +14,37 @@ const EVENT_LABEL = {
   OrderDispatched: 'Despachado',
   OrderDelivered: 'Entregado',
   OrderCancelled: 'Cancelado',
+  OrderPaid: 'Pago recibido',
+  OrderEmailRejected: 'Correo rechazado',
+  OrderRejected: 'Rechazado sin pago',
 };
 const DEFAULT_TYPES = Object.keys(EVENT_LABEL);
 
 function eventStatus(ev) {
-  return ev?.newStatus || (ev?.eventType === 'OrderCreated' ? 'CREADO' : null);
+  return ev?.newStatus || (['OrderCreated', 'OrderEmailRejected'].includes(ev?.eventType) ? 'CREADO' : null);
+}
+
+/** Pedido creado con un correo inválido: ms-orders lo publica en audit.timeline (no en orders.events). */
+const isRejected = (ev) => ev?.eventType === 'OrderEmailRejected';
+
+function rejectedText(ev) {
+  const m = ev?.summary?.match(/correo rechazado \((.+?)\)/);
+  return m ? `Nuevo pedido con correo rechazado: ${m[1]}` : 'Nuevo pedido con correo rechazado';
+}
+
+/** El pago no cambia el estado: se pinta con su propio color y en "Cambio" se muestra el medio de pago. */
+const isPayment = (ev) => ev?.eventType === 'OrderPaid';
+
+function badgeClass(ev) {
+  if (isPayment(ev)) return 'paid';
+  if (isRejected(ev)) return 'rejected';
+  const st = eventStatus(ev);
+  return st ? `st-${st}` : 'off';
+}
+
+function paymentText(ev) {
+  const m = ev?.summary?.match(/pagó el pedido #\d+ con (.+?)(?: desde |$)/);
+  return m ? `Pagado con ${m[1]}` : 'Pago registrado';
 }
 
 function prettyPayload(raw) {
@@ -150,7 +176,6 @@ export default function AuditComponent() {
                   </thead>
                   <tbody>
                     {events.map((ev) => {
-                      const st = eventStatus(ev);
                       return (
                         <tr
                           key={ev.id}
@@ -161,17 +186,23 @@ export default function AuditComponent() {
                           aria-selected={ev.id === selectedId}
                         >
                           <td className="num">{fmtDate(ev.occurredAt)}<span className="cell-sub">{fmtTime(ev.occurredAt)}</span></td>
-                          <td><span className={`badge ${st ? `st-${st}` : 'off'}`}>{EVENT_LABEL[ev.eventType] || ev.eventType}</span></td>
+                          <td><span className={`badge ${badgeClass(ev)}`}>{EVENT_LABEL[ev.eventType] || ev.eventType}</span></td>
                           <td className="cell-strong">#{ev.entityId}</td>
                           <td style={{ maxWidth: 240 }}>
                             <span className="cell-strong ellipsis" style={{ display: 'block' }}>{ev.actor || 'sistema'}</span>
                             {ev.origin && <span className="cell-sub">IP {ev.origin}</span>}
                           </td>
                           <td className="small">
-                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                              {ev.previousStatus && (<><span className="subtle">{STATUS_BADGE[ev.previousStatus] || ev.previousStatus}</span><IconArrow size={14} style={{ color: '#a8a29e' }} /></>)}
-                              <b>{STATUS_BADGE[ev.newStatus] || ev.newStatus || '—'}</b>
-                            </span>
+                            {isPayment(ev) ? (
+                              <b>{paymentText(ev)}</b>
+                            ) : isRejected(ev) ? (
+                              <b>{rejectedText(ev)}</b>
+                            ) : (
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                {ev.previousStatus && (<><span className="subtle">{STATUS_BADGE[ev.previousStatus] || ev.previousStatus}</span><IconArrow size={14} style={{ color: '#a8a29e' }} /></>)}
+                                <b>{STATUS_BADGE[ev.newStatus] || ev.newStatus || '—'}</b>
+                              </span>
+                            )}
                           </td>
                         </tr>
                       );
@@ -189,13 +220,13 @@ export default function AuditComponent() {
                     <div className="subtle small">Evento #{selected.id}</div>
                     <h2 className="card-title" style={{ fontSize: 20, marginTop: 2 }}>{EVENT_LABEL[selected.eventType] || selected.eventType} · #{selected.entityId}</h2>
                   </div>
-                  <span className={`badge ${eventStatus(selected) ? `st-${eventStatus(selected)}` : 'off'}`}>{selected.eventType}</span>
+                  <span className={`badge ${badgeClass(selected)}`}>{selected.eventType}</span>
                 </div>
                 <dl className="dl">
                   <dt>Fecha</dt><dd className="num">{fmtDateTime(selected.occurredAt)}</dd>
                   <dt>Usuario</dt><dd>{selected.actor || 'sistema'}</dd>
                   <dt>IP de origen</dt><dd className="mono">{selected.origin || '—'}</dd>
-                  <dt>Cambio</dt><dd>{selected.previousStatus ? `${STATUS_BADGE[selected.previousStatus]} → ${STATUS_BADGE[selected.newStatus]}` : `Nuevo pedido (${STATUS_BADGE[selected.newStatus] || 'CREADO'})`}</dd>
+                  <dt>Cambio</dt><dd>{isRejected(selected) ? rejectedText(selected) : isPayment(selected) ? `${paymentText(selected)} (estado sin cambios: ${STATUS_BADGE[selected.newStatus] || selected.newStatus})` : selected.previousStatus ? `${STATUS_BADGE[selected.previousStatus]} → ${STATUS_BADGE[selected.newStatus]}` : `Nuevo pedido (${STATUS_BADGE[selected.newStatus] || 'CREADO'})`}</dd>
                   <dt>Resumen</dt><dd>{selected.summary || '—'}</dd>
                   {selected.sourceService && (<><dt>Origen</dt><dd>{selected.sourceService}</dd></>)}
                 </dl>

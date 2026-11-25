@@ -111,9 +111,12 @@ Si se quiere un HTTP API delante del BFF: authorizer JWT con issuer `https://log
 
 1. `POST /api/orders` → pedido `CREADO`, evento `OrderCreated` en Kafka (si `KAFKA_ENABLED=true`) y en RabbitMQ: **`kitchen.ticket`** (la cocina recibe el pedido al instante), `email.send` (confirmación al cliente) y `notify.inapp` (aviso al admin).
 2. `PUT .../status ACEPTADO` → orders llama a catalog `stock/decrease` (si falta stock responde **409** y el pedido sigue `CREADO`), evento `OrderAccepted`, `email.send` + aviso en la campana del cliente (la cocina ya tiene el ticket desde la creación).
-3. `EN_PREPARACION`, `DESPACHADO` (no se puede sin aceptar: 409), `ENTREGADO` → eventos `OrderPreparing/Dispatched/Delivered`; al entregar además `invoice.gen.pdf` (boleta).
-4. `CANCELADO` → `OrderCancelled`, correo prioritario `email.send.high` por `cmd.topic`; si ya había descontado stock, se repone.
-5. (Con Kafka) audit y report consumen `orders.events` con grupos distintos: auditoría guarda quién/qué/cuándo/desde dónde y publica en `audit.timeline`; reportería arma los KPIs sin llamar a orders (no bloquea el core).
+3. `EN_PREPARACION`, `DESPACHADO` (no se puede sin aceptar: 409), `ENTREGADO` → eventos `OrderPreparing/Dispatched/Delivered`.
+4. `POST /api/orders/{id}/payment` con `{"method":"TARJETA_CREDITO|TARJETA_DEBITO|TRANSFERENCIA|EFECTIVO"}` → el cliente paga (pago simulado, no cambia el estado; no se puede pagar dos veces ni un pedido cancelado: 409). Evento `OrderPaid` en Kafka y en RabbitMQ **`invoice.gen.pdf`** por `cmd.topic` → `q.cmd.invoice` (boleta con el medio de pago) + aviso al admin en la campana.
+5. `CANCELADO` → `OrderCancelled`, correo prioritario `email.send.high` por `cmd.topic`; si ya había descontado stock, se repone.
+6. (Con Kafka) audit y report consumen `orders.events` con grupos distintos: auditoría guarda quién/qué/cuándo/desde dónde y publica en `audit.timeline`; reportería arma los KPIs sin llamar a orders (no bloquea el core).
+7. Pedido creado con un correo inválido (`@fail.test`, sin formato): el `OrderCreated` **no entra a `orders.events`** (reportería no lo cuenta). orders lo publica como `OrderEmailRejected` directo en **`audit.timeline`** (key `ORDER:<id>`) y deja una copia en las DLT **`orders.events.audit.DLT`** y **`orders.events.report.DLT`** (header `x-rejection-reason`) y audit lo registra desde ahí ("Correo rechazado" en la pantalla Auditoría). El correo va a `q.cmd.email.dlq`; los eventos siguientes del pedido (aceptar, pagar…) van normal a `orders.events`.
+8. Plazo de pago: si un pedido sigue sin pagar **10 minutos** después de creado (`PAYMENT_DEADLINE`, se revisa cada 30 s), ms-orders lo pasa a **`RECHAZADO`** (repone el stock si ya se había descontado). Publica `OrderRejected` en `orders.events` (reportes y auditoría se actualizan), una copia en las dos DLT y avisa al cliente (correo prioritario + campana). Un pedido rechazado no se puede pagar ni avanzar (409).
 
 La publicación ocurre después del commit y en un hilo aparte: si Kafka o RabbitMQ están caídos el pedido igual se guarda.
 

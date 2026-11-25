@@ -11,11 +11,13 @@ import org.springframework.amqp.core.MessageDeliveryMode;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.apache.kafka.clients.producer.ProducerRecord;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -58,21 +60,48 @@ public class OrderMessagingListener {
 		sendCommands(event);
 	}
 
-	private void publishEvent(OrderEvent event) {
+	/**
+	 * Un pedido creado con un correo que no se puede enviar no es un evento de negocio valido: no entra a orders.events
+	 * (reportes no lo cuentan): se publica como OrderEmailRejected directo en audit.timeline, donde ms-audit lo
+	 * registra para la pantalla Auditoria. Los eventos siguientes del pedido (aceptar, pagar...) van normal.
+	 */
+	private void publishEvent(OrderEvent original) {
+		Optional<String> badEmail = OrderEvent.CREATED.equals(original.type()) && original.order() != null
+				? EmailRecipientCheck.rejectionReason(original.order().customerEmail()) : Optional.empty();
+		if (badEmail.isPresent()) {
+			OrderEvent event = original.withType(OrderEvent.EMAIL_REJECTED);
+			publishKafka(MessagingConfig.AUDIT_TIMELINE_TOPIC, "ORDER:" + event.orderId(), event, null);
+			MessagingConfig.REJECTION_DLTS.forEach(dlt -> publishKafka(dlt, String.valueOf(event.orderId()), event, badEmail.get()));
+			return;
+		}
+		publishKafka(MessagingConfig.ORDERS_EVENTS_TOPIC, String.valueOf(original.orderId()), original, null);
+		// Rechazo por falta de pago: va a orders.events (reportes y auditoria se actualizan) y queda copia en las DLT
+		if (OrderEvent.REJECTED.equals(original.type())) {
+			MessagingConfig.REJECTION_DLTS.forEach(dlt -> publishKafka(dlt, String.valueOf(original.orderId()), original,
+					"el cliente no pagó dentro del plazo"));
+		}
+	}
+
+	/** Publica el evento en un topico; con reason != null agrega los headers de rechazo (copias en las DLT). */
+	private void publishKafka(String topic, String key, OrderEvent event, String reason) {
 		try {
-			String json = objectMapper.writeValueAsString(event);
-			kafkaTemplate.send(MessagingConfig.ORDERS_EVENTS_TOPIC, String.valueOf(event.orderId()), json)
-					.whenComplete((result, ex) -> {
-						if (ex != null) {
-							log.error("No se pudo publicar {} del pedido {} en Kafka: {}", event.type(), event.orderId(), ex.getMessage());
-						} else {
-							log.info("Kafka {} pedido {} -> {}-{}@{}", event.type(), event.orderId(),
-									result.getRecordMetadata().topic(), result.getRecordMetadata().partition(),
-									result.getRecordMetadata().offset());
-						}
-					});
+			ProducerRecord<String, String> record = new ProducerRecord<>(topic, key, objectMapper.writeValueAsString(event));
+			if (reason != null) {
+				record.headers().add("x-rejection-reason", reason.getBytes(StandardCharsets.UTF_8));
+				record.headers().add("x-original-topic", MessagingConfig.ORDERS_EVENTS_TOPIC.getBytes(StandardCharsets.UTF_8));
+				record.headers().add("x-rejected-by", "ms-pedidos360-orders".getBytes(StandardCharsets.UTF_8));
+			}
+			kafkaTemplate.send(record).whenComplete((result, ex) -> {
+				if (ex != null) {
+					log.error("No se pudo publicar {} del pedido {} en {}: {}", event.type(), event.orderId(), topic, ex.getMessage());
+				} else {
+					log.info("Kafka {} pedido {} -> {}-{}@{}{}", event.type(), event.orderId(),
+							result.getRecordMetadata().topic(), result.getRecordMetadata().partition(),
+							result.getRecordMetadata().offset(), reason != null ? " (" + reason + ")" : "");
+				}
+			});
 		} catch (JsonProcessingException | RuntimeException ex) {
-			log.error("Error publicando {} del pedido {} en Kafka", event.type(), event.orderId(), ex);
+			log.error("Error publicando {} del pedido {} en {}", event.type(), event.orderId(), topic, ex);
 		}
 	}
 
@@ -82,13 +111,21 @@ public class OrderMessagingListener {
 		}
 		OrderResponse order = event.order();
 
+		// Pago del cliente: la boleta va a q.cmd.invoice y el administrador recibe el aviso en la campana
+		if (OrderEvent.PAID.equals(event.type())) {
+			send(MessagingConfig.CMD_TOPIC, MessagingConfig.RK_INVOICE_PDF,
+					Command.of("InvoiceGenerate", event, invoicePayload(order)));
+			send(MessagingConfig.CMD_DIRECT, MessagingConfig.RK_INAPP, Command.of("InAppNotify", event, inAppPayload(event)));
+			return;
+		}
+
 		// Correo invalido o rechazado: error de datos, va directo a q.cmd.email.dlq sin pasar por q.cmd.email.
 		// Cancelaciones salen como prioritarias por el exchange topic (email.# -> q.cmd.email).
 		Command email = Command.of("EmailSend", event, emailPayload(event));
 		Optional<String> rejected = EmailRecipientCheck.rejectionReason(order.customerEmail());
 		if (rejected.isPresent()) {
 			sendToDeadLetter(MessagingConfig.Q_EMAIL, MessagingConfig.RK_EMAIL, email, rejected.get());
-		} else if (event.status() == OrderStatus.CANCELADO) {
+		} else if (event.status() == OrderStatus.CANCELADO || event.status() == OrderStatus.RECHAZADO) {
 			send(MessagingConfig.CMD_TOPIC, MessagingConfig.RK_EMAIL_HIGH, email);
 		} else {
 			send(MessagingConfig.CMD_DIRECT, MessagingConfig.RK_EMAIL, email);
@@ -105,25 +142,28 @@ public class OrderMessagingListener {
 			send(MessagingConfig.CMD_DIRECT, MessagingConfig.RK_KITCHEN, Command.of("KitchenTicket", event, ticket));
 		}
 
-		if (event.status() == OrderStatus.ENTREGADO) {
-			Map<String, Object> invoice = new LinkedHashMap<>();
-			invoice.put("orderId", order.id());
-			invoice.put("storeId", order.storeId());
-			invoice.put("customerName", order.customerName());
-			invoice.put("customerEmail", order.customerEmail());
-			invoice.put("total", order.total());
-			invoice.put("items", order.items());
-			send(MessagingConfig.CMD_TOPIC, MessagingConfig.RK_INVOICE_PDF, Command.of("InvoiceGenerate", event, invoice));
-		}
-
 		Map<String, Object> inApp = inAppPayload(event);
 		if (inApp != null) {
 			send(MessagingConfig.CMD_DIRECT, MessagingConfig.RK_INAPP, Command.of("InAppNotify", event, inApp));
 		}
 	}
 
+	/** Boleta del pago: cmd.topic + invoice.gen.pdf -> q.cmd.invoice (la consume el dominio boletas de notify). */
+	public static Map<String, Object> invoicePayload(OrderResponse order) {
+		Map<String, Object> invoice = new LinkedHashMap<>();
+		invoice.put("orderId", order.id());
+		invoice.put("storeId", order.storeId());
+		invoice.put("customerName", order.customerName());
+		invoice.put("customerEmail", order.customerEmail());
+		invoice.put("total", order.total());
+		invoice.put("paymentMethod", order.paymentMethod());
+		invoice.put("paidAt", order.paidAt() != null ? order.paidAt().toString() : null);
+		invoice.put("items", order.items());
+		return invoice;
+	}
+
 	/**
-	 * Notificacion de la campana: pedido nuevo -> administradores; cambio de estado -> el cliente del pedido.
+	 * Notificacion de la campana: pedido nuevo y pago -> administradores; cambio de estado -> el cliente del pedido.
 	 * Al confirmar (ACEPTADO) el cliente recibe "tu pedido esta en proceso".
 	 */
 	public static Map<String, Object> inAppPayload(OrderEvent event) {
@@ -132,6 +172,19 @@ public class OrderMessagingListener {
 			return null;
 		}
 		Long id = order.id();
+		if (OrderEvent.PAID.equals(event.type())) {
+			Map<String, Object> paid = new LinkedHashMap<>();
+			paid.put("audience", "ADMIN");
+			paid.put("recipient", null);
+			paid.put("orderId", id);
+			paid.put("status", event.status());
+			paid.put("previousStatus", event.previousStatus());
+			paid.put("title", "Pago recibido del pedido #" + id);
+			paid.put("body", order.customerName() + " pagó " + clp(order.total())
+					+ (order.paymentMethod() != null ? " con " + order.paymentMethod().label().toLowerCase() : "")
+					+ ". La boleta se envió a " + order.customerEmail() + ".");
+			return paid;
+		}
 		String audience = "CUSTOMER";
 		String title;
 		String body;
@@ -156,11 +209,15 @@ public class OrderMessagingListener {
 			}
 			case ENTREGADO -> {
 				title = "Tu pedido #" + id + " fue entregado";
-				body = "Gracias por tu compra. Te enviamos la boleta electrónica a tu correo.";
+				body = "Gracias por tu compra.";
 			}
 			case CANCELADO -> {
 				title = "Tu pedido #" + id + " fue cancelado";
 				body = "Si no lo cancelaste tú, contáctanos.";
+			}
+			case RECHAZADO -> {
+				title = "Tu pedido #" + id + " fue rechazado";
+				body = "No recibimos el pago a tiempo. Si aún lo quieres, haz un pedido nuevo.";
 			}
 			default -> {
 				return null;

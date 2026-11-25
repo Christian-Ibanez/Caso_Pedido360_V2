@@ -30,7 +30,7 @@ export function OrderProgress({ order }) {
 /** Línea de tiempo vertical del detalle de un pedido. */
 export function OrderTimeline({ order }) {
   const status = order?.status || 'CREADO';
-  const steps = status === 'CANCELADO' ? ['CREADO', 'CANCELADO'] : FLOW;
+  const steps = status === 'CANCELADO' || status === 'RECHAZADO' ? ['CREADO', status] : FLOW;
   const current = steps.indexOf(status);
   const times = statusTimes(order);
   return (
@@ -39,7 +39,7 @@ export function OrderTimeline({ order }) {
         const reached = i <= current;
         const cls = [
           'tl-item',
-          reached ? (s === 'CANCELADO' ? 'cancel' : 'reached') : '',
+          reached ? (s === 'CANCELADO' || s === 'RECHAZADO' ? 'cancel' : 'reached') : '',
           i === current ? 'current' : '',
           i < current ? 'line-done' : '',
         ].join(' ');
@@ -104,8 +104,9 @@ export function OrderNotifications({ order, live = false }) {
     { text: 'La cocina recibió tu pedido', time: times.CREADO, kind: 'mail' },
     { text: 'Te enviamos un correo de confirmación', time: times.CREADO, kind: 'mail' },
   ];
-  if (status === 'ENTREGADO') notes.push({ text: 'Boleta electrónica enviada a tu correo', time: times.ENTREGADO, kind: 'mail' });
+  if (order?.paidAt) notes.push({ text: 'Boleta electrónica enviada a tu correo', time: order.paidAt, kind: 'mail' });
   if (status === 'CANCELADO') notes.push({ text: 'Te avisamos por correo la cancelación', time: times.CANCELADO, kind: 'mail' });
+  if (status === 'RECHAZADO') notes.push({ text: 'Pedido rechazado: no se pagó a tiempo', time: times.RECHAZADO, kind: 'mail' });
 
   const real = (inbox?.items || []).filter((n) => n.audience === 'CUSTOMER' && String(n.orderId) === String(id));
   if (real.length > 0) {

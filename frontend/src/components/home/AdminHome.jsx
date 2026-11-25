@@ -11,7 +11,7 @@ import { LOW_STOCK } from '../../lib/products';
 import { itemsSummary } from '../orders/OrderParts';
 import { ProductThumb, Alert, PageHead } from '../ui';
 
-const ORDER_OF_STATUS = ['CREADO', 'ACEPTADO', 'EN_PREPARACION', 'DESPACHADO', 'ENTREGADO', 'CANCELADO'];
+const ORDER_OF_STATUS = ['CREADO', 'ACEPTADO', 'EN_PREPARACION', 'DESPACHADO', 'ENTREGADO', 'CANCELADO', 'RECHAZADO'];
 
 export default function AdminHome() {
   const { isStaff } = useRoles();
@@ -22,7 +22,7 @@ export default function AdminHome() {
 
   const today = new Date();
   const todays = useMemo(() => orders.filter((o) => isSameDay(toDate(o.createdAt), today)), [orders]); // eslint-disable-line react-hooks/exhaustive-deps
-  const todaysValid = todays.filter((o) => o.status !== 'CANCELADO');
+  const todaysValid = todays.filter((o) => !['CANCELADO', 'RECHAZADO'].includes(o.status));
   const salesToday = todaysValid.reduce((s, o) => s + orderTotal(o), 0);
 
   const pending = useMemo(
@@ -44,7 +44,7 @@ export default function AdminHome() {
       const d = new Date();
       d.setDate(d.getDate() - i);
       const total = orders
-        .filter((o) => o.status !== 'CANCELADO' && isSameDay(toDate(o.createdAt), d))
+        .filter((o) => !['CANCELADO', 'RECHAZADO'].includes(o.status) && isSameDay(toDate(o.createdAt), d))
         .reduce((s, o) => s + orderTotal(o), 0);
       days.push({
         label: i === 0 ? 'Hoy' : d.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit' }),
@@ -91,7 +91,7 @@ export default function AdminHome() {
           <div className="kpi-label">Ventas de hoy</div>
           <div className="kpi-value">{loading ? '—' : clp(salesToday)}</div>
           <div className="kpi-foot">
-            {plural(todays.length, 'pedido', 'pedidos')}{todaysValid.length > 0 ? ` · ticket promedio ${clp(salesToday / todaysValid.length)}` : ''}
+            {plural(todays.length, 'pedido', 'pedidos')}{todaysValid.length > 0 ? ` · venta promedio ${clp(salesToday / todaysValid.length)}` : ''}
           </div>
         </div>
         <div className="kpi">
@@ -130,7 +130,7 @@ export default function AdminHome() {
               <b className="num">{clp(orderTotal(o))}</b>
               {isStaff && (
                 <div className="actions" style={{ gap: 8 }}>
-                  <button type="button" className="btn sm" disabled={busy[orderId(o)]} onClick={() => act(o, 'CANCELADO')}>Rechazar</button>
+                  <button type="button" className="btn sm" disabled={busy[orderId(o)]} onClick={() => act(o, 'CANCELADO')}>Cancelar</button>
                   <button type="button" className="btn sm primary" disabled={busy[orderId(o)]} onClick={() => act(o, 'ACEPTADO')}>Confirmar</button>
                 </div>
               )}

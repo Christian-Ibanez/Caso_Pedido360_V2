@@ -9,9 +9,13 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 public interface OrderRepository extends JpaRepository<CustomerOrder, Long>, JpaSpecificationExecutor<CustomerOrder> {
+
+	/** Pedidos sin pagar, todavia abiertos y creados antes de `cutoff` (vencio el plazo de pago). */
+	List<CustomerOrder> findByPaidAtIsNullAndStatusInAndCreatedAtBefore(Collection<OrderStatus> statuses, LocalDateTime cutoff);
 
 	/** Filtros opcionales: solo se agrega la condicion si el parametro viene. */
 	static Specification<CustomerOrder> filter(OrderStatus status, LocalDateTime from, LocalDateTime to) {

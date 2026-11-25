@@ -69,6 +69,11 @@ export function useOrders() {
   return { orders, setOrders, loading, error, reload };
 }
 
+/** Pago del cliente: ms-orders guarda el medio y envía la boleta a q.cmd.invoice (RabbitMQ). */
+export function payOrder(id, method) {
+  return api.post(`/api/orders/${id}/payment`, { method });
+}
+
 export function changeOrderStatus(id, status) {
   return api.put(`/api/orders/${id}/status`, { status });
 }

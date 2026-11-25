@@ -8,11 +8,14 @@ public enum OrderStatus {
 	EN_PREPARACION,
 	DESPACHADO,
 	ENTREGADO,
-	CANCELADO;
+	CANCELADO,
+	/** Lo asigna el sistema (no el admin): el cliente no pago dentro del plazo (app.payment.deadline). */
+	RECHAZADO;
 
 	/**
 	 * Flujo: CREADO -> ACEPTADO -> EN_PREPARACION -> DESPACHADO -> ENTREGADO.
 	 * Se puede CANCELAR antes de entregar. Regla del caso: no se puede despachar sin aceptar.
+	 * RECHAZADO no es una transicion manual: lo aplica PaymentDeadlineJob a los pedidos sin pago vencidos.
 	 */
 	public Set<OrderStatus> allowedTransitions() {
 		return switch (this) {
@@ -20,7 +23,7 @@ public enum OrderStatus {
 			case ACEPTADO -> Set.of(EN_PREPARACION, CANCELADO);
 			case EN_PREPARACION -> Set.of(DESPACHADO, CANCELADO);
 			case DESPACHADO -> Set.of(ENTREGADO, CANCELADO);
-			case ENTREGADO, CANCELADO -> Set.of();
+			case ENTREGADO, CANCELADO, RECHAZADO -> Set.of();
 		};
 	}
 

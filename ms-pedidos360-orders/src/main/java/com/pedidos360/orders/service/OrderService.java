@@ -10,6 +10,7 @@ import com.pedidos360.orders.messaging.RequestMetadata;
 import com.pedidos360.orders.model.CustomerOrder;
 import com.pedidos360.orders.model.OrderItem;
 import com.pedidos360.orders.model.OrderStatus;
+import com.pedidos360.orders.model.PaymentMethod;
 import com.pedidos360.orders.repository.OrderRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
@@ -77,6 +78,11 @@ public class OrderService {
 					"No se puede pasar de " + current + " a " + newStatus
 							+ ". Permitidos: " + current.allowedTransitions());
 		}
+		// Regla de pago: no se entrega un pedido que el cliente todavia no paga (409, sigue DESPACHADO)
+		if (newStatus == OrderStatus.ENTREGADO && order.getPaidAt() == null) {
+			throw new InvalidStatusTransitionException(
+					"El pedido #" + id + " no se puede entregar: el cliente aún no lo ha pagado");
+		}
 
 		order.setStatus(newStatus);
 		LocalDateTime now = LocalDateTime.now();
@@ -99,6 +105,54 @@ public class OrderService {
 		// Kafka orders.events (reporteria/auditoria) + RabbitMQ email/cocina/boleta, despues del commit
 		publish(OrderEvent.typeFor(newStatus), current, saved);
 		return saved;
+	}
+
+	/**
+	 * Registra el pago del cliente. No cambia el estado del pedido; despues del commit sale la boleta a
+	 * q.cmd.invoice (RabbitMQ) y el evento OrderPaid a Kafka. No se puede pagar dos veces ni pagar un cancelado.
+	 */
+	@Transactional
+	public OrderResponse pay(Long id, PaymentMethod method) {
+		CustomerOrder order = get(id);
+		if (order.getStatus() == OrderStatus.CANCELADO) {
+			throw new InvalidStatusTransitionException("No se puede pagar un pedido cancelado");
+		}
+		if (order.getStatus() == OrderStatus.RECHAZADO) {
+			throw new InvalidStatusTransitionException("El pedido #" + id + " fue rechazado porque no se pagó a tiempo");
+		}
+		if (order.getPaidAt() != null) {
+			throw new InvalidStatusTransitionException("El pedido #" + id + " ya fue pagado con " + order.getPaymentMethod().label());
+		}
+		order.setPaymentMethod(method);
+		order.setPaidAt(LocalDateTime.now());
+		OrderResponse saved = OrderResponse.from(repository.save(order));
+		publish(OrderEvent.PAID, saved.status(), saved);
+		return saved;
+	}
+
+	/** Estados en que un pedido sin pagar puede vencer (los terminales no). */
+	public static final EnumSet<OrderStatus> OPEN =
+			EnumSet.of(OrderStatus.CREADO, OrderStatus.ACEPTADO, OrderStatus.EN_PREPARACION, OrderStatus.DESPACHADO);
+
+	/**
+	 * Rechaza un pedido cuyo plazo de pago vencio (lo llama PaymentDeadlineJob): pasa a RECHAZADO, repone el stock si
+	 * ya se habia descontado y publica OrderRejected (orders.events + copia en las DLT + aviso al cliente).
+	 * Devuelve false si mientras tanto el pedido se pago o cerro.
+	 */
+	@Transactional
+	public boolean rejectUnpaid(Long id) {
+		CustomerOrder order = get(id);
+		OrderStatus current = order.getStatus();
+		if (order.getPaidAt() != null || !OPEN.contains(current)) {
+			return false;
+		}
+		if (STOCK_TAKEN.contains(current)) {
+			catalogClient.increaseStock(order);
+		}
+		order.setStatus(OrderStatus.RECHAZADO);
+		OrderResponse saved = OrderResponse.from(repository.save(order));
+		publish(OrderEvent.REJECTED, current, saved);
+		return true;
 	}
 
 	@Transactional

@@ -17,6 +17,11 @@ public record OrderEventMessage(
 		String origin,
 		Long orderId,
 		String previousStatus,
-		String status
+		String status,
+		OrderSnapshot order
 ) {
+	/** Del pedido interesan el medio de pago (OrderPaid) y el correo (OrderEmailRejected), para el resumen. */
+	@JsonIgnoreProperties(ignoreUnknown = true)
+	public record OrderSnapshot(String paymentMethod, String customerEmail) {
+	}
 }

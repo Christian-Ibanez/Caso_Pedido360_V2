@@ -25,6 +25,8 @@ public class ReportService {
 
 	public static final List<String> ACTIVE_STATUSES = List.of("CREADO", "ACEPTADO", "EN_PREPARACION", "DESPACHADO");
 	private static final String CANCELLED = "CANCELADO";
+	/** Rechazado por el sistema: el cliente no pago a tiempo. Igual que un cancelado, no cuenta como venta. */
+	private static final String REJECTED = "RECHAZADO";
 
 	private final OrderFactRepository repository;
 	private final Clock clock;
@@ -33,7 +35,7 @@ public class ReportService {
 	public KpiResponse kpis(String rangeParam) {
 		ReportRange range = ReportRange.parse(rangeParam, LocalDateTime.now(clock));
 		List<OrderFact> created = repository.findByCreatedAtGreaterThanEqual(range.from());
-		List<OrderFact> notCancelled = created.stream().filter(o -> !CANCELLED.equals(o.getStatus())).toList();
+		List<OrderFact> notCancelled = created.stream().filter(o -> !isClosedUnsold(o)).toList();
 		List<OrderFact> delivered = deliveredIn(range);
 
 		BigDecimal totalSales = sum(notCancelled);
@@ -48,6 +50,7 @@ public class ReportService {
 				created.size(),
 				delivered.size(),
 				created.stream().filter(o -> CANCELLED.equals(o.getStatus())).count(),
+				created.stream().filter(o -> REJECTED.equals(o.getStatus())).count(),
 				totalSales,
 				averageTicket,
 				leadTime(delivered),
@@ -60,7 +63,7 @@ public class ReportService {
 	public List<KpiResponse.SalesByHour> salesByHour(String rangeParam) {
 		ReportRange range = ReportRange.parse(rangeParam, LocalDateTime.now(clock));
 		return salesByHour(repository.findByCreatedAtGreaterThanEqual(range.from()).stream()
-				.filter(o -> !CANCELLED.equals(o.getStatus())).toList());
+				.filter(o -> !isClosedUnsold(o)).toList());
 	}
 
 	@Transactional(readOnly = true)
@@ -75,7 +78,7 @@ public class ReportService {
 		}
 		Map<Long, Acc> byProduct = new HashMap<>();
 		for (OrderFact order : repository.findByCreatedAtGreaterThanEqual(range.from())) {
-			if (CANCELLED.equals(order.getStatus())) {
+			if (isClosedUnsold(order)) {
 				continue;
 			}
 			for (OrderLineFact line : order.getLines()) {
@@ -138,5 +141,9 @@ public class ReportService {
 
 	private static double round(double value) {
 		return Math.round(value * 10.0) / 10.0;
+	}
+
+	private static boolean isClosedUnsold(OrderFact order) {
+		return CANCELLED.equals(order.getStatus()) || REJECTED.equals(order.getStatus());
 	}
 }
