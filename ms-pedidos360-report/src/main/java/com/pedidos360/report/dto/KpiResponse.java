@@ -7,7 +7,7 @@ import java.util.Map;
 
 /**
  * Panel de KPIs del caso: ventas por hora, lead time (creado -> entregado) y estados activos.
- * Ventas = total de los pedidos creados en el rango que no fueron cancelados.
+ * Ventas = total de los pedidos creados en el rango que no fueron cancelados ni rechazados.
  */
 public record KpiResponse(
 		String range,
@@ -16,6 +16,8 @@ public record KpiResponse(
 		long totalOrders,
 		long deliveredOrders,
 		long cancelledOrders,
+		/** Rechazados por el sistema porque el cliente no pago a tiempo. */
+		long rejectedOrders,
 		BigDecimal totalSales,
 		BigDecimal averageTicket,
 		LeadTime leadTime,

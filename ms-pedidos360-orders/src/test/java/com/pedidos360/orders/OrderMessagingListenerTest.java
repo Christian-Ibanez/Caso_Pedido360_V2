@@ -35,6 +35,9 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.never;
 import org.mockito.ArgumentCaptor;
+import static org.mockito.Mockito.times;
+import java.nio.charset.StandardCharsets;
+import org.apache.kafka.clients.producer.ProducerRecord;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageProperties;
 import com.pedidos360.orders.messaging.EmailRecipientCheck;
@@ -134,33 +137,72 @@ class OrderMessagingListenerTest {
 		assertThat((String) cliente.get("title")).isEqualTo("Tu pedido #7 está en proceso");
 	}
 
+	@SuppressWarnings("unchecked")
+	private List<ProducerRecord<String, String>> kafkaRecords(int times) {
+		ArgumentCaptor<ProducerRecord<String, String>> captor = ArgumentCaptor.forClass(ProducerRecord.class);
+		verify(kafka, times(times)).send(captor.capture());
+		return captor.getAllValues();
+	}
+
+	@SuppressWarnings("unchecked")
+	private void kafkaSendOk() {
+		when(kafka.send(any(ProducerRecord.class))).thenReturn(new CompletableFuture<>());
+	}
+
+	private static String header(ProducerRecord<String, String> r, String name) {
+		var h = r.headers().lastHeader(name);
+		return h == null ? null : new String(h.value(), StandardCharsets.UTF_8);
+	}
+
 	@Test
-	void pedidoConCorreoInvalidoNoEntraAOrdersEventsSinoAAuditTimeline() {
+	void pedidoConCorreoInvalidoVaAAuditTimelineYALasDltNoAOrdersEvents() {
 		ReflectionTestUtils.setField(listener, "enabled", true);
 		ReflectionTestUtils.setField(listener, "kafkaEnabled", true);
-		when(kafka.send(anyString(), anyString(), anyString())).thenReturn(new CompletableFuture<>());
+		kafkaSendOk();
 
 		listener.on(creado("cliente@fail.test"));
 
-		ArgumentCaptor<String> json = ArgumentCaptor.forClass(String.class);
-		verify(kafka).send(eq(MessagingConfig.AUDIT_TIMELINE_TOPIC), eq("ORDER:9"), json.capture());
-		verify(kafka, never()).send(eq(MessagingConfig.ORDERS_EVENTS_TOPIC), anyString(), anyString());
-		assertThat(json.getValue()).contains("\"type\":\"OrderEmailRejected\"");
+		List<ProducerRecord<String, String>> records = kafkaRecords(3);
+		assertThat(records).extracting(ProducerRecord::topic)
+				.containsExactly(MessagingConfig.AUDIT_TIMELINE_TOPIC, "orders.events.audit.DLT", "orders.events.report.DLT")
+				.doesNotContain(MessagingConfig.ORDERS_EVENTS_TOPIC);
+		assertThat(records.get(0).key()).isEqualTo("ORDER:9");
+		assertThat(records.get(0).value()).contains("\"type\":\"OrderEmailRejected\"");
+		assertThat(header(records.get(0), "x-rejection-reason")).isNull();
+		assertThat(header(records.get(1), "x-rejection-reason")).contains("fail.test");
+	}
 
-		// con correo valido va a orders.events
-		listener.on(creado("ana@mail.com"));
-		verify(kafka).send(eq(MessagingConfig.ORDERS_EVENTS_TOPIC), eq("9"), anyString());
+	@Test
+	void pedidoRechazadoPorFaltaDePagoVaAOrdersEventsYALasDlt() {
+		ReflectionTestUtils.setField(listener, "enabled", true);
+		ReflectionTestUtils.setField(listener, "kafkaEnabled", true);
+		kafkaSendOk();
+		OrderResponse order = new OrderResponse(9L, 1L, "Ana", "ana@mail.com", null, null, OrderStatus.RECHAZADO,
+				new BigDecimal("3000"), List.of(), LocalDateTime.now(), LocalDateTime.now(), null, null, null, null, null);
+
+		listener.on(OrderEvent.of(OrderEvent.REJECTED, OrderStatus.CREADO, order, new RequestMetadata("system", "internal", "t", "c")));
+
+		List<ProducerRecord<String, String>> records = kafkaRecords(3);
+		assertThat(records).extracting(ProducerRecord::topic)
+				.containsExactly(MessagingConfig.ORDERS_EVENTS_TOPIC, "orders.events.audit.DLT", "orders.events.report.DLT");
+		assertThat(header(records.get(2), "x-rejection-reason")).contains("no pagó");
+		// el cliente recibe el aviso en la campana
+		Map<String, Object> aviso = OrderMessagingListener.inAppPayload(
+				OrderEvent.of(OrderEvent.REJECTED, OrderStatus.CREADO, order, new RequestMetadata("system", "internal", "t", "c")));
+		assertThat((String) aviso.get("title")).isEqualTo("Tu pedido #9 fue rechazado");
 	}
 
 	@Test
 	void conKafkaPublicaElEvento() {
 		ReflectionTestUtils.setField(listener, "enabled", true);
 		ReflectionTestUtils.setField(listener, "kafkaEnabled", true);
-		when(kafka.send(anyString(), anyString(), anyString())).thenReturn(new CompletableFuture<>());
+		kafkaSendOk();
 
 		listener.on(aceptado());
 
-		verify(kafka).send(eq(MessagingConfig.ORDERS_EVENTS_TOPIC), eq("7"), anyString());
+		List<ProducerRecord<String, String>> records = kafkaRecords(1);
+		assertThat(records.get(0).topic()).isEqualTo(MessagingConfig.ORDERS_EVENTS_TOPIC);
+		assertThat(records.get(0).key()).isEqualTo("7");
 	}
 
 	@Test

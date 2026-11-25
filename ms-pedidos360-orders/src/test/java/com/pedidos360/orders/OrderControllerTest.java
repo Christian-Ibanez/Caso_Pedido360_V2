@@ -83,6 +83,27 @@ class OrderControllerTest {
 		pay(id, "EFECTIVO").andExpect(status().isConflict());
 	}
 
+	@Autowired
+	private com.pedidos360.orders.service.PaymentDeadlineJob paymentDeadlineJob;
+
+	/** Va al final (orden por nombre): vence el plazo de pago de todos los pedidos abiertos sin pagar de la BD. */
+	@Test
+	void zPedidoSinPagoVencidoQuedaRechazado() throws Exception {
+		String body = mvc.perform(post("/api/orders").contentType(MediaType.APPLICATION_JSON).content(ORDER))
+				.andReturn().getResponse().getContentAsString();
+		long id = Long.parseLong(body.replaceAll(".*?\"id\":(\\d+).*", "$1"));
+		java.time.Duration original = paymentDeadlineJob.deadline();
+		try {
+			org.springframework.test.util.ReflectionTestUtils.setField(paymentDeadlineJob, "deadline", java.time.Duration.ofSeconds(-5));
+			paymentDeadlineJob.rejectExpired();
+		} finally {
+			org.springframework.test.util.ReflectionTestUtils.setField(paymentDeadlineJob, "deadline", original);
+		}
+		mvc.perform(get("/api/orders/" + id)).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("RECHAZADO"));
+		pay(id, "EFECTIVO").andExpect(status().isConflict());
+		changeStatus(id, "ACEPTADO").andExpect(status().isConflict());
+	}
+
 	@Test
 	void pedidoSinItemsEsInvalido() throws Exception {
 		mvc.perform(post("/api/orders").contentType(MediaType.APPLICATION_JSON)

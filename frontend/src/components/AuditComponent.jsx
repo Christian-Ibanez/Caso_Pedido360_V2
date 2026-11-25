@@ -16,6 +16,7 @@ const EVENT_LABEL = {
   OrderCancelled: 'Cancelado',
   OrderPaid: 'Pago recibido',
   OrderEmailRejected: 'Correo rechazado',
+  OrderRejected: 'Rechazado sin pago',
 };
 const DEFAULT_TYPES = Object.keys(EVENT_LABEL);
 

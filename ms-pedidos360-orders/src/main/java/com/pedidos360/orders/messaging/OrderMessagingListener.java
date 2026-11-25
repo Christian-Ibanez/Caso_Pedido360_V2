@@ -11,11 +11,13 @@ import org.springframework.amqp.core.MessageDeliveryMode;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.apache.kafka.clients.producer.ProducerRecord;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -64,25 +66,42 @@ public class OrderMessagingListener {
 	 * registra para la pantalla Auditoria. Los eventos siguientes del pedido (aceptar, pagar...) van normal.
 	 */
 	private void publishEvent(OrderEvent original) {
-		boolean rejected = OrderEvent.CREATED.equals(original.type()) && original.order() != null
-				&& EmailRecipientCheck.rejectionReason(original.order().customerEmail()).isPresent();
-		OrderEvent event = rejected ? original.withType(OrderEvent.EMAIL_REJECTED) : original;
-		String topic = rejected ? MessagingConfig.AUDIT_TIMELINE_TOPIC : MessagingConfig.ORDERS_EVENTS_TOPIC;
-		String key = rejected ? "ORDER:" + event.orderId() : String.valueOf(event.orderId());
+		Optional<String> badEmail = OrderEvent.CREATED.equals(original.type()) && original.order() != null
+				? EmailRecipientCheck.rejectionReason(original.order().customerEmail()) : Optional.empty();
+		if (badEmail.isPresent()) {
+			OrderEvent event = original.withType(OrderEvent.EMAIL_REJECTED);
+			publishKafka(MessagingConfig.AUDIT_TIMELINE_TOPIC, "ORDER:" + event.orderId(), event, null);
+			MessagingConfig.REJECTION_DLTS.forEach(dlt -> publishKafka(dlt, String.valueOf(event.orderId()), event, badEmail.get()));
+			return;
+		}
+		publishKafka(MessagingConfig.ORDERS_EVENTS_TOPIC, String.valueOf(original.orderId()), original, null);
+		// Rechazo por falta de pago: va a orders.events (reportes y auditoria se actualizan) y queda copia en las DLT
+		if (OrderEvent.REJECTED.equals(original.type())) {
+			MessagingConfig.REJECTION_DLTS.forEach(dlt -> publishKafka(dlt, String.valueOf(original.orderId()), original,
+					"el cliente no pagó dentro del plazo"));
+		}
+	}
+
+	/** Publica el evento en un topico; con reason != null agrega los headers de rechazo (copias en las DLT). */
+	private void publishKafka(String topic, String key, OrderEvent event, String reason) {
 		try {
-			String json = objectMapper.writeValueAsString(event);
-			kafkaTemplate.send(topic, key, json)
-					.whenComplete((result, ex) -> {
-						if (ex != null) {
-							log.error("No se pudo publicar {} del pedido {} en Kafka: {}", event.type(), event.orderId(), ex.getMessage());
-						} else {
-							log.info("Kafka {} pedido {} -> {}-{}@{}", event.type(), event.orderId(),
-									result.getRecordMetadata().topic(), result.getRecordMetadata().partition(),
-									result.getRecordMetadata().offset());
-						}
-					});
+			ProducerRecord<String, String> record = new ProducerRecord<>(topic, key, objectMapper.writeValueAsString(event));
+			if (reason != null) {
+				record.headers().add("x-rejection-reason", reason.getBytes(StandardCharsets.UTF_8));
+				record.headers().add("x-original-topic", MessagingConfig.ORDERS_EVENTS_TOPIC.getBytes(StandardCharsets.UTF_8));
+				record.headers().add("x-rejected-by", "ms-pedidos360-orders".getBytes(StandardCharsets.UTF_8));
+			}
+			kafkaTemplate.send(record).whenComplete((result, ex) -> {
+				if (ex != null) {
+					log.error("No se pudo publicar {} del pedido {} en {}: {}", event.type(), event.orderId(), topic, ex.getMessage());
+				} else {
+					log.info("Kafka {} pedido {} -> {}-{}@{}{}", event.type(), event.orderId(),
+							result.getRecordMetadata().topic(), result.getRecordMetadata().partition(),
+							result.getRecordMetadata().offset(), reason != null ? " (" + reason + ")" : "");
+				}
+			});
 		} catch (JsonProcessingException | RuntimeException ex) {
-			log.error("Error publicando {} del pedido {} en Kafka", event.type(), event.orderId(), ex);
+			log.error("Error publicando {} del pedido {} en {}", event.type(), event.orderId(), topic, ex);
 		}
 	}
 
@@ -106,7 +125,7 @@ public class OrderMessagingListener {
 		Optional<String> rejected = EmailRecipientCheck.rejectionReason(order.customerEmail());
 		if (rejected.isPresent()) {
 			sendToDeadLetter(MessagingConfig.Q_EMAIL, MessagingConfig.RK_EMAIL, email, rejected.get());
-		} else if (event.status() == OrderStatus.CANCELADO) {
+		} else if (event.status() == OrderStatus.CANCELADO || event.status() == OrderStatus.RECHAZADO) {
 			send(MessagingConfig.CMD_TOPIC, MessagingConfig.RK_EMAIL_HIGH, email);
 		} else {
 			send(MessagingConfig.CMD_DIRECT, MessagingConfig.RK_EMAIL, email);
@@ -195,6 +214,10 @@ public class OrderMessagingListener {
 			case CANCELADO -> {
 				title = "Tu pedido #" + id + " fue cancelado";
 				body = "Si no lo cancelaste tú, contáctanos.";
+			}
+			case RECHAZADO -> {
+				title = "Tu pedido #" + id + " fue rechazado";
+				body = "No recibimos el pago a tiempo. Si aún lo quieres, haz un pedido nuevo.";
 			}
 			default -> {
 				return null;

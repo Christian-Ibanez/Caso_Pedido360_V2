@@ -22,9 +22,9 @@ export default function CustomerHome() {
     () => sortByNewest(orders.filter((o) => isMine(o, email, orderId(o)))),
     [orders, email],
   );
-  const active = mine.filter((o) => !['ENTREGADO', 'CANCELADO'].includes(o.status));
+  const active = mine.filter((o) => !['ENTREGADO', 'CANCELADO', 'RECHAZADO'].includes(o.status));
   const current = active[0];
-  const notCancelled = mine.filter((o) => o.status !== 'CANCELADO');
+  const notCancelled = mine.filter((o) => !['CANCELADO', 'RECHAZADO'].includes(o.status));
   const delivered = mine.filter((o) => o.status === 'ENTREGADO');
   const lastDelivered = delivered[0];
 

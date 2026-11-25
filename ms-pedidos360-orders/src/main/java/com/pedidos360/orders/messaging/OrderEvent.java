@@ -32,6 +32,8 @@ public record OrderEvent(
 	public static final String PAID = "OrderPaid";
 	/** Pedido creado con un correo invalido (@fail.test, sin formato): va a audit.timeline en vez de orders.events. */
 	public static final String EMAIL_REJECTED = "OrderEmailRejected";
+	/** El sistema rechazo el pedido porque el cliente no pago a tiempo (estado RECHAZADO). */
+	public static final String REJECTED = "OrderRejected";
 
 	public OrderEvent withType(String newType) {
 		return new OrderEvent(newType, eventId, timestamp, traceId, correlationId, source, actor, origin, orderId,
@@ -52,6 +54,7 @@ public record OrderEvent(
 			case DESPACHADO -> "OrderDispatched";
 			case ENTREGADO -> "OrderDelivered";
 			case CANCELADO -> "OrderCancelled";
+			case RECHAZADO -> REJECTED;
 		};
 	}
 }

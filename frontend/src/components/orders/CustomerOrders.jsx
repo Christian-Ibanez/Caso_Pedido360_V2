@@ -4,7 +4,7 @@ import { useRoles } from '../../hooks/useRoles';
 import { useCatalog, useOrders, changeOrderStatus, payOrder } from '../../hooks/useData';
 import {
   clp, fmtDate, fmtTime, orderId, orderTotal, sortByNewest, inStatusGroup, STATUS_GROUPS,
-  PAYMENT_METHODS, paymentLabel,
+  PAYMENT_METHODS, paymentLabel, PAYMENT_DEADLINE_MIN, paymentDeadline,
 } from '../../lib/format';
 import { OrderTimeline, OrderLines, OrderNotifications, itemsSummary } from './OrderParts';
 import NewOrderForm from './NewOrderForm';
@@ -185,10 +185,15 @@ export default function CustomerOrders() {
                   Pagado con {paymentLabel(current.paymentMethod).toLowerCase()}
                   <span className="muted small"> · {fmtDate(current.paidAt)}, {fmtTime(current.paidAt)}</span>
                 </p>
+              ) : current.status === 'RECHAZADO' ? (
+                <p className="muted" style={{ margin: 0 }}>Pedido rechazado: no se pagó dentro de {PAYMENT_DEADLINE_MIN} minutos.</p>
               ) : current.status === 'CANCELADO' ? (
                 <p className="muted" style={{ margin: 0 }}>Pedido cancelado, no requiere pago.</p>
               ) : (
                 <div className="stack-sm">
+                  {paymentDeadline(current) && (
+                    <p className="subtle small" style={{ margin: 0 }}>Paga antes de las {fmtTime(paymentDeadline(current))} o el pedido se rechazará.</p>
+                  )}
                   <div className="chips" role="radiogroup" aria-label="Medio de pago">
                     {PAYMENT_METHODS.map((m) => (
                       <button

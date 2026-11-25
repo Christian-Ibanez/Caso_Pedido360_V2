@@ -100,7 +100,7 @@ public class AuditService {
 	}
 
 	private static String summary(OrderEventMessage e) {
-		String who = e.actor() != null ? e.actor() : "desconocido";
+		String who = e.actor() == null ? "desconocido" : "system".equals(e.actor()) ? "El sistema" : e.actor();
 		String what = switch (e.type()) {
 			case "OrderCreated" -> "creó el pedido";
 			case "OrderUpdated" -> "editó el pedido";
@@ -112,6 +112,7 @@ public class AuditService {
 			case "OrderCancelled" -> "canceló el pedido";
 			case "OrderPaid" -> "pagó el pedido";
 			case "OrderEmailRejected" -> "creó el pedido";
+			case "OrderRejected" -> "rechazó por falta de pago el pedido";
 			default -> "registró " + e.type() + " en el pedido";
 		};
 		String payment = "OrderPaid".equals(e.type()) && e.order() != null && e.order().paymentMethod() != null

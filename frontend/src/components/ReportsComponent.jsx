@@ -126,12 +126,12 @@ export default function ReportsComponent() {
             <div className="kpi">
               <div className="kpi-label">Venta promedio por pedido</div>
               <div className="kpi-value">{clp(kpis.averageTicket)}</div>
-              <div className="kpi-foot">Sin contar pedidos cancelados</div>
+              <div className="kpi-foot">Sin contar cancelados ni rechazados</div>
             </div>
             <div className="kpi">
               <div className="kpi-label">Pedidos</div>
               <div className="kpi-value">{kpis.totalOrders}</div>
-              <div className="kpi-foot">{kpis.deliveredOrders} entregados · {kpis.cancelledOrders} cancelados</div>
+              <div className="kpi-foot">{kpis.deliveredOrders} entregados · {kpis.cancelledOrders} cancelados{kpis.rejectedOrders ? ` · ${kpis.rejectedOrders} rechazados` : ''}</div>
             </div>
             <div className="kpi">
               <div className="kpi-label">Tiempo de entrega promedio</div>
