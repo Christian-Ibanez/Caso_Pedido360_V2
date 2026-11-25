@@ -97,9 +97,9 @@ export default function ReportsComponent() {
               <div className="kpi-foot">{RANGES.find((r) => r.id === range)?.label}</div>
             </div>
             <div className="kpi">
-              <div className="kpi-label">Ticket promedio</div>
+              <div className="kpi-label">Venta promedio por pedido</div>
               <div className="kpi-value">{clp(kpis.averageTicket)}</div>
-              <div className="kpi-foot">Por pedido no cancelado</div>
+              <div className="kpi-foot">Sin contar pedidos cancelados</div>
             </div>
             <div className="kpi">
               <div className="kpi-label">Pedidos</div>

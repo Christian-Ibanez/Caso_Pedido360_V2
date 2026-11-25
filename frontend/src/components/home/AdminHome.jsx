@@ -91,7 +91,7 @@ export default function AdminHome() {
           <div className="kpi-label">Ventas de hoy</div>
           <div className="kpi-value">{loading ? '—' : clp(salesToday)}</div>
           <div className="kpi-foot">
-            {plural(todays.length, 'pedido', 'pedidos')}{todaysValid.length > 0 ? ` · ticket promedio ${clp(salesToday / todaysValid.length)}` : ''}
+            {plural(todays.length, 'pedido', 'pedidos')}{todaysValid.length > 0 ? ` · venta promedio ${clp(salesToday / todaysValid.length)}` : ''}
           </div>
         </div>
         <div className="kpi">

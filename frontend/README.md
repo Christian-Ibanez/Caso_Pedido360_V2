@@ -86,7 +86,7 @@ La interfaz cambia según el rol que entrega Entra ID en el token (`roles`):
 | **Inicio** | Pedido en curso con su avance, últimos pedidos y productos recomendados | Operación del día: ventas, pedidos pendientes (confirmar/rechazar), ventas de 7 días, stock por reponer y pedidos por estado | Igual que Admin, sin acciones |
 | **Pedidos** | Mis pedidos con detalle lateral (seguimiento, productos, notificaciones) y cancelación mientras está Pendiente | Gestión con botón del siguiente estado (Confirmar → Preparar → Despachar → Entregar), cancelación, acciones masivas, exportar CSV y detalle con registro de auditoría | – |
 | **Catálogo** | Tarjetas con foto, filtros por categoría, carrito con botones − / + y "Continuar" al nuevo pedido | (Admin) tabla con stock − / +, interruptor de activo, edición en panel lateral, alta y eliminación | Catálogo de solo lectura |
-| **Reportería** | – | (Admin) ventas, ticket promedio, ventas por hora, más vendidos, tiempo de entrega y pedidos activos | – |
+| **Reportería** | – | (Admin) ventas, venta promedio por pedido, ventas por hora, más vendidos, tiempo de entrega y pedidos activos | – |
 | **RabbitMQ** | – | (Admin) colas con sus contadores Ready/Unacked/Total, exchanges y bindings; crear y eliminar (los del sistema están protegidos) | – |
 | **Auditoría** | – | (Admin) eventos por tipo, usuario y pedido, con el evento original | Igual que Admin |
 
