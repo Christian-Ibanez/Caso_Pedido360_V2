@@ -78,6 +78,11 @@ public class OrderService {
 					"No se puede pasar de " + current + " a " + newStatus
 							+ ". Permitidos: " + current.allowedTransitions());
 		}
+		// Regla de pago: no se entrega un pedido que el cliente todavia no paga (409, sigue DESPACHADO)
+		if (newStatus == OrderStatus.ENTREGADO && order.getPaidAt() == null) {
+			throw new InvalidStatusTransitionException(
+					"El pedido #" + id + " no se puede entregar: el cliente aún no lo ha pagado");
+		}
 
 		order.setStatus(newStatus);
 		LocalDateTime now = LocalDateTime.now();

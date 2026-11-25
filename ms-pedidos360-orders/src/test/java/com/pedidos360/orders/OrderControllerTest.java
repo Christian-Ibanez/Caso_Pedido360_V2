@@ -45,6 +45,9 @@ class OrderControllerTest {
 				.andExpect(status().isConflict());
 		changeStatus(1, "EN_PREPARACION").andExpect(status().isOk());
 		changeStatus(1, "DESPACHADO").andExpect(status().isOk()).andExpect(jsonPath("$.dispatchedAt").exists());
+		// Regla de pago: sin pagar no se puede entregar
+		changeStatus(1, "ENTREGADO").andExpect(status().isConflict());
+		pay(1, "EFECTIVO").andExpect(status().isOk());
 		changeStatus(1, "ENTREGADO").andExpect(status().isOk()).andExpect(jsonPath("$.deliveredAt").exists());
 		changeStatus(1, "CANCELADO").andExpect(status().isConflict());
 

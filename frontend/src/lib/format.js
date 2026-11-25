@@ -164,6 +164,12 @@ export function statusTimes(order) {
   };
 }
 
+/** Motivo por el que el admin no puede avanzar el pedido al estado `next` (o null si puede). */
+export function blockedReason(order, next) {
+  if (next === 'ENTREGADO' && !order?.paidAt) return 'Esperando el pago del cliente';
+  return null;
+}
+
 /** Medios de pago que acepta ms-orders (POST /api/orders/{id}/payment). */
 export const PAYMENT_METHODS = [
   { id: 'TARJETA_CREDITO', label: 'Tarjeta de crédito' },

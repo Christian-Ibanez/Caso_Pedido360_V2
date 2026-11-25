@@ -4,7 +4,7 @@ import { useCatalog, useOrders, changeOrderStatus } from '../../hooks/useData';
 import { publishPendingCount } from '../Layout';
 import {
   clp, fmtDate, fmtTime, toDate, isSameDay, orderId, orderTotal, sortByNewest, inStatusGroup,
-  STATUS_GROUPS, NEXT_STATUS, NEXT_ACTION, canCancel,
+  STATUS_GROUPS, NEXT_STATUS, NEXT_ACTION, canCancel, blockedReason,
 } from '../../lib/format';
 import { itemsSummary } from './OrderParts';
 import AdminOrderDetail from './AdminOrderDetail';
@@ -60,17 +60,19 @@ export default function AdminOrders() {
   };
 
   const run = async (targets, statusFor, verb) => {
-    const jobs = targets.map((o) => ({ o, status: statusFor(o) })).filter((j) => j.status);
-    if (jobs.length === 0) return;
-    setErrors('');
+    const all = targets.map((o) => ({ o, status: statusFor(o) })).filter((j) => j.status);
+    const blocked = all.filter((j) => blockedReason(j.o, j.status));
+    const jobs = all.filter((j) => !blockedReason(j.o, j.status));
+    setErrors(blocked.length ? `Sin pagar, no se entregan: ${blocked.map((j) => `#${orderId(j.o)}`).join(', ')}` : '');
     setNotice('');
+    if (jobs.length === 0) return;
     setBusy((b) => ({ ...b, ...Object.fromEntries(jobs.map((j) => [orderId(j.o), true])) }));
     const results = await Promise.allSettled(jobs.map((j) => changeOrderStatus(orderId(j.o), j.status)));
     const failed = results
       .map((r, i) => (r.status === 'rejected' ? `#${orderId(jobs[i].o)}: ${r.reason?.message}` : null))
       .filter(Boolean);
     const ok = jobs.length - failed.length;
-    if (failed.length) setErrors(failed.join(' · '));
+    if (failed.length) setErrors((e) => [e, ...failed].filter(Boolean).join(' · '));
     if (ok > 0) setNotice(`${ok} ${ok === 1 ? 'pedido' : 'pedidos'} ${verb}.`);
     setSelected([]);
     setBusy({});
@@ -182,7 +184,7 @@ export default function AdminOrders() {
                     <td className="nowrap">
                       <div className="actions" style={{ gap: 8, flexWrap: 'nowrap' }}>
                         {next && (
-                          <button type="button" className={`btn sm ${primary ? 'primary' : ''}`} disabled={busy[id]} onClick={() => run([o], () => next, 'actualizados')}>
+                          <button type="button" className={`btn sm ${primary ? 'primary' : ''}`} disabled={busy[id] || !!blockedReason(o, next)} title={blockedReason(o, next) || undefined} onClick={() => run([o], () => next, 'actualizados')}>
                             {NEXT_ACTION[o.status]} <IconChevron size={14} />
                           </button>
                         )}

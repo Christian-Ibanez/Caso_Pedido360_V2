@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api/http';
 import { getOrderTimeline } from '../../api/audit';
 import { changeOrderStatus } from '../../hooks/useData';
-import { fmtDate, fmtTime, fmtDateTime, NEXT_STATUS, NEXT_ACTION, canCancel, STATUS_LABEL, paymentLabel } from '../../lib/format';
+import { fmtDate, fmtTime, fmtDateTime, NEXT_STATUS, NEXT_ACTION, canCancel, STATUS_LABEL, paymentLabel, blockedReason } from '../../lib/format';
 import { OrderTimeline, OrderLines, OrderNotifications } from './OrderParts';
 import { StatusBadge, Alert } from '../ui';
 import { IconBack, IconChevron } from '../Icons';
@@ -128,9 +128,12 @@ export default function AdminOrderDetail({ id, byId, onBack }) {
               {(NEXT_STATUS[order.status] || canCancel(order.status)) ? (
                 <div className="stack-sm">
                   {NEXT_STATUS[order.status] && (
-                    <button type="button" className="btn primary" disabled={saving} onClick={() => move(NEXT_STATUS[order.status])}>
+                    <button type="button" className="btn primary" disabled={saving || !!blockedReason(order, NEXT_STATUS[order.status])} onClick={() => move(NEXT_STATUS[order.status])}>
                       {NEXT_ACTION[order.status]}: pasar a {STATUS_LABEL[NEXT_STATUS[order.status]].toLowerCase()} <IconChevron size={16} />
                     </button>
+                  )}
+                  {blockedReason(order, NEXT_STATUS[order.status]) && (
+                    <p className="subtle small" style={{ margin: 0 }}>{blockedReason(order, NEXT_STATUS[order.status])}: el pedido se podrá entregar cuando el cliente lo pague.</p>
                   )}
                   {order.status === 'CREADO' && (
                     <p className="subtle small" style={{ margin: 0 }}>Al confirmar, el pedido pasa a en proceso: se descuenta el stock, se envía el ticket a cocina y el cliente recibe el aviso. Si falta stock, el pedido sigue pendiente.</p>
