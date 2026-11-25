@@ -115,6 +115,7 @@ Si se quiere un HTTP API delante del BFF: authorizer JWT con issuer `https://log
 4. `POST /api/orders/{id}/payment` con `{"method":"TARJETA_CREDITO|TARJETA_DEBITO|TRANSFERENCIA|EFECTIVO"}` → el cliente paga (pago simulado, no cambia el estado; no se puede pagar dos veces ni un pedido cancelado: 409). Evento `OrderPaid` en Kafka y en RabbitMQ **`invoice.gen.pdf`** por `cmd.topic` → `q.cmd.invoice` (boleta con el medio de pago) + aviso al admin en la campana.
 5. `CANCELADO` → `OrderCancelled`, correo prioritario `email.send.high` por `cmd.topic`; si ya había descontado stock, se repone.
 6. (Con Kafka) audit y report consumen `orders.events` con grupos distintos: auditoría guarda quién/qué/cuándo/desde dónde y publica en `audit.timeline`; reportería arma los KPIs sin llamar a orders (no bloquea el core).
+7. Pedido creado con un correo inválido (`@fail.test`, sin formato): el `OrderCreated` **no entra a `orders.events`** (reportería no lo cuenta). orders lo publica como `OrderEmailRejected` directo en **`audit.timeline`** (key `ORDER:<id>`) y audit lo registra desde ahí ("Correo rechazado" en la pantalla Auditoría). El correo va a `q.cmd.email.dlq`; los eventos siguientes del pedido (aceptar, pagar…) van normal a `orders.events`.
 
 La publicación ocurre después del commit y en un hilo aparte: si Kafka o RabbitMQ están caídos el pedido igual se guarda.
 

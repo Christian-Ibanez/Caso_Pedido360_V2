@@ -30,6 +30,16 @@ public class AuditService {
 	/** Idempotente: si el eventId ya fue registrado (reentrega de Kafka) no se duplica. */
 	@Transactional
 	public boolean record(OrderEventMessage event, String rawJson, String topic, int partition, long offset) {
+		return record(event, rawJson, topic, partition, offset, true);
+	}
+
+	/**
+	 * @param publishTimeline false cuando el evento ya viene de audit.timeline (OrderEmailRejected que publica
+	 *                        ms-orders): se registra pero no se vuelve a publicar en el mismo topico.
+	 */
+	@Transactional
+	public boolean record(OrderEventMessage event, String rawJson, String topic, int partition, long offset,
+			boolean publishTimeline) {
 		if (repository.existsByEventId(event.eventId())) {
 			log.info("Evento {} ya auditado, se omite", event.eventId());
 			return false;
@@ -53,7 +63,9 @@ public class AuditService {
 		audit.setKafkaOffset(offset);
 		audit.setPayload(rawJson);
 		AuditEventResponse saved = AuditEventResponse.from(repository.save(audit));
-		timelinePublisher.publish(saved);
+		if (publishTimeline) {
+			timelinePublisher.publish(saved);
+		}
 		log.info("Auditado {} pedido {} por {} desde {}", event.type(), event.orderId(), event.actor(), event.origin());
 		return true;
 	}
@@ -99,10 +111,13 @@ public class AuditService {
 			case "OrderDelivered" -> "marcó como entregado el pedido";
 			case "OrderCancelled" -> "canceló el pedido";
 			case "OrderPaid" -> "pagó el pedido";
+			case "OrderEmailRejected" -> "creó el pedido";
 			default -> "registró " + e.type() + " en el pedido";
 		};
 		String payment = "OrderPaid".equals(e.type()) && e.order() != null && e.order().paymentMethod() != null
-				? " con " + paymentLabel(e.order().paymentMethod()) : "";
+				? " con " + paymentLabel(e.order().paymentMethod())
+				: "OrderEmailRejected".equals(e.type()) && e.order() != null && e.order().customerEmail() != null
+						? " con un correo rechazado (" + e.order().customerEmail() + ")" : "";
 		String transition = e.previousStatus() != null && !e.previousStatus().equals(e.status())
 				? " (" + e.previousStatus() + " -> " + e.status() + ")" : "";
 		return who + " " + what + " #" + e.orderId() + payment + transition + (e.origin() != null ? " desde " + e.origin() : "");

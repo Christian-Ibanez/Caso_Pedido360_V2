@@ -15,6 +15,7 @@ const EVENT_LABEL = {
   OrderDelivered: 'Entregado',
   OrderCancelled: 'Cancelado',
   OrderPaid: 'Pagado',
+  OrderEmailRejected: 'Correo rechazado',
 };
 
 export default function AdminOrderDetail({ id, byId, onBack }) {

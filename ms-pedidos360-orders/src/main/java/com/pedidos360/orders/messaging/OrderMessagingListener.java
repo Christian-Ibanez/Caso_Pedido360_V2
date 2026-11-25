@@ -58,10 +58,20 @@ public class OrderMessagingListener {
 		sendCommands(event);
 	}
 
-	private void publishEvent(OrderEvent event) {
+	/**
+	 * Un pedido creado con un correo que no se puede enviar no es un evento de negocio valido: no entra a orders.events
+	 * (reportes no lo cuentan): se publica como OrderEmailRejected directo en audit.timeline, donde ms-audit lo
+	 * registra para la pantalla Auditoria. Los eventos siguientes del pedido (aceptar, pagar...) van normal.
+	 */
+	private void publishEvent(OrderEvent original) {
+		boolean rejected = OrderEvent.CREATED.equals(original.type()) && original.order() != null
+				&& EmailRecipientCheck.rejectionReason(original.order().customerEmail()).isPresent();
+		OrderEvent event = rejected ? original.withType(OrderEvent.EMAIL_REJECTED) : original;
+		String topic = rejected ? MessagingConfig.AUDIT_TIMELINE_TOPIC : MessagingConfig.ORDERS_EVENTS_TOPIC;
+		String key = rejected ? "ORDER:" + event.orderId() : String.valueOf(event.orderId());
 		try {
 			String json = objectMapper.writeValueAsString(event);
-			kafkaTemplate.send(MessagingConfig.ORDERS_EVENTS_TOPIC, String.valueOf(event.orderId()), json)
+			kafkaTemplate.send(topic, key, json)
 					.whenComplete((result, ex) -> {
 						if (ex != null) {
 							log.error("No se pudo publicar {} del pedido {} en Kafka: {}", event.type(), event.orderId(), ex.getMessage());

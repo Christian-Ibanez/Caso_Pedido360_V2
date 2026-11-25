@@ -135,6 +135,24 @@ class OrderMessagingListenerTest {
 	}
 
 	@Test
+	void pedidoConCorreoInvalidoNoEntraAOrdersEventsSinoAAuditTimeline() {
+		ReflectionTestUtils.setField(listener, "enabled", true);
+		ReflectionTestUtils.setField(listener, "kafkaEnabled", true);
+		when(kafka.send(anyString(), anyString(), anyString())).thenReturn(new CompletableFuture<>());
+
+		listener.on(creado("cliente@fail.test"));
+
+		ArgumentCaptor<String> json = ArgumentCaptor.forClass(String.class);
+		verify(kafka).send(eq(MessagingConfig.AUDIT_TIMELINE_TOPIC), eq("ORDER:9"), json.capture());
+		verify(kafka, never()).send(eq(MessagingConfig.ORDERS_EVENTS_TOPIC), anyString(), anyString());
+		assertThat(json.getValue()).contains("\"type\":\"OrderEmailRejected\"");
+
+		// con correo valido va a orders.events
+		listener.on(creado("ana@mail.com"));
+		verify(kafka).send(eq(MessagingConfig.ORDERS_EVENTS_TOPIC), eq("9"), anyString());
+	}
+
+	@Test
 	void conKafkaPublicaElEvento() {
 		ReflectionTestUtils.setField(listener, "enabled", true);
 		ReflectionTestUtils.setField(listener, "kafkaEnabled", true);

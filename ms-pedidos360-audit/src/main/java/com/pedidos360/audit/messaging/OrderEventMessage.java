@@ -20,8 +20,8 @@ public record OrderEventMessage(
 		String status,
 		OrderSnapshot order
 ) {
-	/** Del pedido solo interesa el medio de pago (para el resumen del evento OrderPaid). */
+	/** Del pedido interesan el medio de pago (OrderPaid) y el correo (OrderEmailRejected), para el resumen. */
 	@JsonIgnoreProperties(ignoreUnknown = true)
-	public record OrderSnapshot(String paymentMethod) {
+	public record OrderSnapshot(String paymentMethod, String customerEmail) {
 	}
 }

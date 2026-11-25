@@ -15,11 +15,20 @@ const EVENT_LABEL = {
   OrderDelivered: 'Entregado',
   OrderCancelled: 'Cancelado',
   OrderPaid: 'Pago recibido',
+  OrderEmailRejected: 'Correo rechazado',
 };
 const DEFAULT_TYPES = Object.keys(EVENT_LABEL);
 
 function eventStatus(ev) {
-  return ev?.newStatus || (ev?.eventType === 'OrderCreated' ? 'CREADO' : null);
+  return ev?.newStatus || (['OrderCreated', 'OrderEmailRejected'].includes(ev?.eventType) ? 'CREADO' : null);
+}
+
+/** Pedido creado con un correo inválido: ms-orders lo publica en audit.timeline (no en orders.events). */
+const isRejected = (ev) => ev?.eventType === 'OrderEmailRejected';
+
+function rejectedText(ev) {
+  const m = ev?.summary?.match(/correo rechazado \((.+?)\)/);
+  return m ? `Nuevo pedido con correo rechazado: ${m[1]}` : 'Nuevo pedido con correo rechazado';
 }
 
 /** El pago no cambia el estado: se pinta con su propio color y en "Cambio" se muestra el medio de pago. */
@@ -27,6 +36,7 @@ const isPayment = (ev) => ev?.eventType === 'OrderPaid';
 
 function badgeClass(ev) {
   if (isPayment(ev)) return 'paid';
+  if (isRejected(ev)) return 'rejected';
   const st = eventStatus(ev);
   return st ? `st-${st}` : 'off';
 }
@@ -184,6 +194,8 @@ export default function AuditComponent() {
                           <td className="small">
                             {isPayment(ev) ? (
                               <b>{paymentText(ev)}</b>
+                            ) : isRejected(ev) ? (
+                              <b>{rejectedText(ev)}</b>
                             ) : (
                               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                                 {ev.previousStatus && (<><span className="subtle">{STATUS_BADGE[ev.previousStatus] || ev.previousStatus}</span><IconArrow size={14} style={{ color: '#a8a29e' }} /></>)}
@@ -213,7 +225,7 @@ export default function AuditComponent() {
                   <dt>Fecha</dt><dd className="num">{fmtDateTime(selected.occurredAt)}</dd>
                   <dt>Usuario</dt><dd>{selected.actor || 'sistema'}</dd>
                   <dt>IP de origen</dt><dd className="mono">{selected.origin || '—'}</dd>
-                  <dt>Cambio</dt><dd>{isPayment(selected) ? `${paymentText(selected)} (estado sin cambios: ${STATUS_BADGE[selected.newStatus] || selected.newStatus})` : selected.previousStatus ? `${STATUS_BADGE[selected.previousStatus]} → ${STATUS_BADGE[selected.newStatus]}` : `Nuevo pedido (${STATUS_BADGE[selected.newStatus] || 'CREADO'})`}</dd>
+                  <dt>Cambio</dt><dd>{isRejected(selected) ? rejectedText(selected) : isPayment(selected) ? `${paymentText(selected)} (estado sin cambios: ${STATUS_BADGE[selected.newStatus] || selected.newStatus})` : selected.previousStatus ? `${STATUS_BADGE[selected.previousStatus]} → ${STATUS_BADGE[selected.newStatus]}` : `Nuevo pedido (${STATUS_BADGE[selected.newStatus] || 'CREADO'})`}</dd>
                   <dt>Resumen</dt><dd>{selected.summary || '—'}</dd>
                   {selected.sourceService && (<><dt>Origen</dt><dd>{selected.sourceService}</dd></>)}
                 </dl>

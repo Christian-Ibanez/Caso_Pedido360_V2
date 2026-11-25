@@ -30,6 +30,13 @@ public record OrderEvent(
 	public static final String DELETED = "OrderDeleted";
 	/** El cliente pago el pedido (no cambia el estado): genera la boleta en q.cmd.invoice. */
 	public static final String PAID = "OrderPaid";
+	/** Pedido creado con un correo invalido (@fail.test, sin formato): va a audit.timeline en vez de orders.events. */
+	public static final String EMAIL_REJECTED = "OrderEmailRejected";
+
+	public OrderEvent withType(String newType) {
+		return new OrderEvent(newType, eventId, timestamp, traceId, correlationId, source, actor, origin, orderId,
+				previousStatus, status, order);
+	}
 
 	public static OrderEvent of(String type, OrderStatus previousStatus, OrderResponse order, RequestMetadata meta) {
 		return new OrderEvent(type, UUID.randomUUID().toString(), Instant.now(), meta.traceId(), meta.correlationId(),
