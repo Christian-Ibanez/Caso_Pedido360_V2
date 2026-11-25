@@ -14,8 +14,35 @@ const RANGES = [
 
 const ACTIVE_ORDER = ['CREADO', 'ACEPTADO', 'EN_PREPARACION', 'DESPACHADO'];
 
+/** Partes de una duración en minutos: 29216 -> [[20,'d'],[6,'h'],[56,'min']] (omite las partes en 0). */
+function durationParts(v, max = 3) {
+  const total = Math.round(Number(v));
+  if (total < 1) return [[0, 'min']];
+  const all = [[Math.floor(total / 1440), 'd'], [Math.floor((total % 1440) / 60), 'h'], [total % 60, 'min']];
+  if (max < 3) {
+    // versión corta: las 2 unidades mayores seguidas (45 d 0 h, 1 h 35 min, 42 min)
+    const first = all.findIndex(([n]) => n > 0);
+    return all.slice(first, first + max).filter(([n], i) => i === 0 || n > 0 || all[first][1] === 'd');
+  }
+  return all.filter(([n]) => n > 0);
+}
+
+/** Texto plano: "20 d 6 h 56 min". */
 function minutes(v) {
-  return v == null ? '—' : `${Math.round(Number(v))} min`;
+  return v == null ? '—' : durationParts(v).map(([n, u]) => `${n} ${u}`).join(' ');
+}
+
+/** Duración con las unidades más chicas; `max` limita cuántas partes se muestran (el resto queda en el tooltip). */
+function Duration({ value, max = 3 }) {
+  if (value == null) return '—';
+  const parts = durationParts(value, max);
+  return (
+    <span className="duration" title={minutes(value)}>
+      {parts.map(([n, u]) => (
+        <span key={u}>{n}<small>{u}</small></span>
+      ))}
+    </span>
+  );
 }
 
 export default function ReportsComponent() {
@@ -108,7 +135,7 @@ export default function ReportsComponent() {
             </div>
             <div className="kpi">
               <div className="kpi-label">Tiempo de entrega promedio</div>
-              <div className="kpi-value">{minutes(lead.averageMinutes)}</div>
+              <div className="kpi-value"><Duration value={lead.averageMinutes} max={2} /></div>
               <div className="kpi-foot">Desde que se crea hasta que se entrega</div>
             </div>
           </div>
@@ -173,9 +200,9 @@ export default function ReportsComponent() {
                 </div>
               ) : null}
               <div className="stat-tiles">
-                <div className="stat-tile"><div className="label">Más rápido</div><div className="value">{minutes(lead.minMinutes)}</div></div>
-                <div className="stat-tile hot"><div className="label">Promedio</div><div className="value">{minutes(lead.averageMinutes)}</div></div>
-                <div className="stat-tile"><div className="label">Más lento</div><div className="value">{minutes(lead.maxMinutes)}</div></div>
+                <div className="stat-tile"><div className="label">Más rápido</div><div className="value"><Duration value={lead.minMinutes} max={2} /></div></div>
+                <div className="stat-tile hot"><div className="label">Promedio</div><div className="value"><Duration value={lead.averageMinutes} max={2} /></div></div>
+                <div className="stat-tile"><div className="label">Más lento</div><div className="value"><Duration value={lead.maxMinutes} max={2} /></div></div>
               </div>
             </section>
 
